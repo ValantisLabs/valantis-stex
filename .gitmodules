@@ -1,3 +1,6 @@
 [submodule "lib/forge-std"]
 	path = lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "lib/valantis-core"]
+	path = lib/valantis-core
+	url = https://github.com/ValantisLabs/valantis-core
