@@ -4,19 +4,33 @@ pragma solidity ^0.8.25;
 import {ISovereignALM} from "@valantis-core/ALM/interfaces/ISovereignALM.sol";
 import {ALMLiquidityQuoteInput, ALMLiquidityQuote} from "@valantis-core/ALM/structs/SovereignALMStructs.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {Fee} from "./Fee.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 
-contract HAMM is ISovereignALM, Fee {
+contract HAMM is ISovereignALM, Fee, ERC20 {
+    using SafeERC20 for ERC20;
+
     /**
      *
      *  CUSTOM ERRORS
      *
      */
     error HAMM__ZeroAddress();
-    error HAMM_getLiquidityQuote_invalidSwapDirection();
+    error HAMM__deposit_lessThanMinShares();
+    error HAMM__deposit_zeroShares();
+    error HAMM__getLiquidityQuote_invalidSwapDirection();
     error HAMM___checkDeadline_expired();
+
+    /**
+     *
+     *  CONSTANTS
+     *
+     */
+    uint256 private constant MINIMUM_LIQUIDITY = 1e9;
 
     /**
      *
@@ -37,7 +51,10 @@ contract HAMM is ISovereignALM, Fee {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _pool, address _withdrawalModule) Fee(_pool) {
+    constructor(
+        address _pool,
+        address _withdrawalModule
+    ) Fee(_pool) ERC20("Hyped AMM LP", "HAMM") {
         if (_withdrawalModule == address(0)) revert HAMM__ZeroAddress();
 
         withdrawalModule = IWithdrawalModule(_withdrawalModule);
@@ -65,13 +82,13 @@ contract HAMM is ISovereignALM, Fee {
     ) external returns (uint256 shares, uint256 amount) {
         _checkDeadline(_deadline);
 
-        /*uint256 totalSupplyCache = totalSupply();
+        uint256 totalSupplyCache = totalSupply();
         if (totalSupplyCache == 0) {
             _mint(address(1), MINIMUM_LIQUIDITY);
 
             shares = _amount - MINIMUM_LIQUIDITY;
         } else {
-            (, uint256 reserve1) = pool.getReserves();
+            (, uint256 reserve1) = _pool.getReserves();
 
             shares = Math.mulDiv(
                 _amount,
@@ -86,13 +103,29 @@ contract HAMM is ISovereignALM, Fee {
 
         _mint(_recipient, shares);
 
-        (, amount) = pool.depositLiquidity(
+        (, amount) = _pool.depositLiquidity(
             0,
             _amount,
             msg.sender,
             new bytes(0),
             abi.encode(msg.sender)
-        );*/
+        );
+    }
+
+    /**
+     * @notice Callback to transfer tokens from user into `pool` during deposits.
+     */
+    function onDepositLiquidityCallback(
+        uint256 /*_amount0*/,
+        uint256 _amount1,
+        bytes memory _data
+    ) external override onlyPool {
+        address user = abi.decode(_data, (address));
+
+        // Only token1 deposits are allowed
+        if (_amount1 > 0) {
+            ERC20(_pool.token1()).safeTransferFrom(user, msg.sender, _amount1);
+        }
     }
 
     /**
@@ -107,7 +140,7 @@ contract HAMM is ISovereignALM, Fee {
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // Only swaps where tokenIn=token0 and tokenOut=token1 are allowed
         if (!_almLiquidityQuoteInput.isZeroToOne) {
-            revert HAMM_getLiquidityQuote_invalidSwapDirection();
+            revert HAMM__getLiquidityQuote_invalidSwapDirection();
         }
 
         uint256 feePips = getFee();
@@ -116,18 +149,6 @@ contract HAMM is ISovereignALM, Fee {
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
         quote.amountOut = (quote.amountInFilled * (PIPS - feePips)) / PIPS;
     }
-
-    /**
-     * @notice Callback function for `depositLiquidity`.
-     * @param _amount0 Amount of token0 being deposited.
-     * @param _amount1 Amount of token1 being deposited.
-     * @param _data Context data passed by the Liquidity Module, while calling `depositLiquidity`.
-     */
-    function onDepositLiquidityCallback(
-        uint256 _amount0,
-        uint256 _amount1,
-        bytes memory _data
-    ) external override onlyPool {}
 
     /**
      * @notice Callback to Liquidity Module after swap into liquidity pool.
@@ -140,7 +161,7 @@ contract HAMM is ISovereignALM, Fee {
         uint256 /*_amountOut*/
     ) external override onlyPool {
         // Transfer token0 amount received from pool into withdrawal module
-        ISovereignPool(pool).withdrawLiquidity(
+        _pool.withdrawLiquidity(
             _amountIn,
             0,
             address(0),
@@ -154,6 +175,11 @@ contract HAMM is ISovereignALM, Fee {
         amountToken0Queue += _amountIn;
     }
 
+    /**
+     *
+     *  PRIVATE FUNCTIONS
+     *
+     */
     function _checkDeadline(uint256 deadline) private view {
         if (block.timestamp > deadline) revert HAMM___checkDeadline_expired();
     }

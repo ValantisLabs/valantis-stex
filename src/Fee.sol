@@ -35,7 +35,7 @@ abstract contract Fee {
      *  IMMUTABLES
      *
      */
-    address public immutable pool;
+    ISovereignPool internal immutable _pool;
 
     /**
      *
@@ -49,8 +49,8 @@ abstract contract Fee {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _pool) {
-        pool = _pool;
+    constructor(address pool_) {
+        _pool = ISovereignPool(pool_);
     }
 
     /**
@@ -59,7 +59,7 @@ abstract contract Fee {
      *
      */
     modifier onlyPool() {
-        if (msg.sender != pool) {
+        if (msg.sender != address(_pool)) {
             revert Fee__onlyPool();
         }
         _;
@@ -71,7 +71,7 @@ abstract contract Fee {
      *
      */
     function getFee() public view returns (uint256 feePips) {
-        (, uint256 reserve1) = ISovereignPool(pool).getReserves();
+        (, uint256 reserve1) = _pool.getReserves();
 
         FeeParams memory feeParamsCache = feeParams;
 
@@ -82,9 +82,12 @@ abstract contract Fee {
                 revert Fee__getFee_ReserveToken1TargetIsZero();
             }
 
-            feePips = uint256(feeParamsCache.feeMaxPips)
-                - (uint256((feeParamsCache.feeMaxPips - feeParamsCache.feeMinPips)) * reserve1)
-                    / uint256(feeParamsCache.reserve1Target);
+            feePips =
+                uint256(feeParamsCache.feeMaxPips) -
+                (uint256(
+                    (feeParamsCache.feeMaxPips - feeParamsCache.feeMinPips)
+                ) * reserve1) /
+                uint256(feeParamsCache.reserve1Target);
         }
     }
 }
