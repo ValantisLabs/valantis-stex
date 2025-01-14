@@ -7,11 +7,12 @@ import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {Fee} from "./Fee.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 
-contract HAMM is ISovereignALM, Fee, ERC20 {
+contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
     using SafeERC20 for ERC20;
 
     /**
@@ -23,6 +24,9 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
     error HAMM__deposit_lessThanMinShares();
     error HAMM__deposit_zeroShares();
     error HAMM__getLiquidityQuote_invalidSwapDirection();
+    error HAMM__withdraw_insufficientToken0Withdrawn();
+    error HAMM__withdraw_insufficientToken1Withdrawn();
+    error HAMM__withdraw_zeroShares();
     error HAMM___checkDeadline_expired();
 
     /**
@@ -51,11 +55,16 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _pool, address _owner, address _withdrawalModule)
-        Fee(_pool, _owner)
-        ERC20("Hyped AMM LP", "HAMM")
-    {
-        if (_withdrawalModule == address(0)) revert HAMM__ZeroAddress();
+    constructor(
+        address _pool,
+        address _owner,
+        address _withdrawalModule
+    ) Fee(_pool, _owner) ERC20("Hyped AMM LP", "HAMM") {
+        if (
+            _pool == address(0) ||
+            _owner == address(0) ||
+            _withdrawalModule == address(0)
+        ) revert HAMM__ZeroAddress();
 
         withdrawalModule = IWithdrawalModule(_withdrawalModule);
     }
@@ -74,10 +83,12 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      * @param _recipient Address to mint LP tokens for.
      * @return shares Amount of shares minted.
      */
-    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
-        external
-        returns (uint256 shares, uint256 amount)
-    {
+    function deposit(
+        uint256 _amount,
+        uint256 _minShares,
+        uint256 _deadline,
+        address _recipient
+    ) external nonReentrant returns (uint256 shares, uint256 amount) {
         _checkDeadline(_deadline);
 
         uint256 totalSupplyCache = totalSupply();
@@ -88,7 +99,11 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
         } else {
             (, uint256 reserve1) = _pool.getReserves();
 
-            shares = Math.mulDiv(_amount, totalSupplyCache, reserve1 + amountToken0Queue);
+            shares = Math.mulDiv(
+                _amount,
+                totalSupplyCache,
+                reserve1 + amountToken0Queue
+            );
         }
 
         if (shares < _minShares) revert HAMM__deposit_lessThanMinShares();
@@ -97,22 +112,90 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
 
         _mint(_recipient, shares);
 
-        (, amount) = _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
+        (, amount) = _pool.depositLiquidity(
+            0,
+            _amount,
+            msg.sender,
+            new bytes(0),
+            abi.encode(msg.sender)
+        );
     }
 
     /**
      * @notice Callback to transfer tokens from user into `pool` during deposits.
      */
-    function onDepositLiquidityCallback(uint256, /*_amount0*/ uint256 _amount1, bytes memory _data)
-        external
-        override
-        onlyPool
-    {
+    function onDepositLiquidityCallback(
+        uint256,
+        /*_amount0*/ uint256 _amount1,
+        bytes memory _data
+    ) external override onlyPool {
         address user = abi.decode(_data, (address));
 
         // Only token1 deposits are allowed
         if (_amount1 > 0) {
             ERC20(_pool.token1()).safeTransferFrom(user, msg.sender, _amount1);
+        }
+    }
+
+    /**
+     * @notice Withdraw liquidity from `pool` and burn LP tokens.
+     * @param _shares Amount of LP tokens to burn.
+     * @param _amount0Min Minimum amount of token0 required for `_recipient`.
+     * @param _amount1Min Minimum amount of token1 required for `_recipient`.
+     * @param _deadline Block timestamp after which this call reverts.
+     * @param _recipient Address to receive token0 and token1 amounts.
+     * @return amount0 Amount of token0 withdrawn. WARNING: Potentially innacurate in case token0 is rebase.
+     * @return amount1 Amount of token1 withdrawn. WARNING: Potentially innacurate in case token1 is rebase.
+     */
+    function withdraw(
+        uint256 _shares,
+        uint256 _amount0Min,
+        uint256 _amount1Min,
+        uint256 _deadline,
+        address _recipient
+    ) external nonReentrant returns (uint256 amount0, uint256 amount1) {
+        _checkDeadline(_deadline);
+
+        if (_shares == 0) revert HAMM__withdraw_zeroShares();
+
+        if (_recipient == address(0)) {
+            revert HAMM__ZeroAddress();
+        }
+
+        (, uint256 reserve1) = _pool.getReserves();
+
+        uint256 totalSupplyCache = totalSupply();
+        // token0 amount calculated as pro-rata share of token0 pending in withdrawal queue
+        amount0 = Math.mulDiv(amountToken0Queue, _shares, totalSupplyCache);
+        // token1 amount calculated as pro-rata share of token1 reserves in the pool
+        amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
+
+        // Slippage protection checks
+        if (amount0 < _amount0Min) {
+            revert HAMM__withdraw_insufficientToken0Withdrawn();
+        }
+        if (amount1 < _amount1Min) {
+            revert HAMM__withdraw_insufficientToken1Withdrawn();
+        }
+
+        // Burn LP tokens
+        _burn(msg.sender, _shares);
+
+        // Send token0 withdrawal request to withdrawal queue,
+        // to be processed asynchronously
+        if (amount0 > 0) {
+            withdrawalModule.burnAfterWithdraw(amount0, _recipient);
+        }
+
+        // Withdraw token1 amount from pool and send to recipient
+        if (amount1 > 0) {
+            _pool.withdrawLiquidity(
+                0,
+                amount1,
+                msg.sender,
+                _recipient,
+                new bytes(0)
+            );
         }
     }
 
@@ -123,7 +206,7 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      */
     function getLiquidityQuote(
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
-        bytes calldata, /*_externalContext*/
+        bytes calldata /*_externalContext*/,
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // Only swaps where tokenIn=token0 and tokenOut=token1 are allowed
@@ -133,7 +216,7 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
 
         uint256 feePips = getSwapFee();
 
-        // Pool must cann `onSwapCallback` to execute post-swap actions
+        // Pool must call `onSwapCallback` to execute post-swap actions
         quote.isCallbackOnSwap = true;
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
         quote.amountOut = (quote.amountInFilled * (PIPS - feePips)) / PIPS;
@@ -151,10 +234,16 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
         uint256 /*_amountOut*/
     ) external override onlyPool {
         // Transfer token0 amount received from pool into withdrawal module
-        _pool.withdrawLiquidity(_amountIn, 0, address(0), address(withdrawalModule), new bytes(0));
+        _pool.withdrawLiquidity(
+            _amountIn,
+            0,
+            address(0),
+            address(withdrawalModule),
+            new bytes(0)
+        );
 
         // Send token0 amount to staking protocol's withdrawal queue
-        withdrawalModule.burn(_amountIn);
+        withdrawalModule.burnAfterSwap(_amountIn);
 
         amountToken0Queue += _amountIn;
     }

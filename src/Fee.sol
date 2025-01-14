@@ -86,9 +86,12 @@ abstract contract Fee is Ownable {
                 revert Fee__getFee_ReserveToken1TargetIsZero();
             }
 
-            feePips = uint256(feeParamsCache.feeMaxPips)
-                - (uint256((feeParamsCache.feeMaxPips - feeParamsCache.feeMinPips)) * reserve1)
-                    / uint256(feeParamsCache.reserve1Target);
+            feePips =
+                uint256(feeParamsCache.feeMaxPips) -
+                (uint256(
+                    (feeParamsCache.feeMaxPips - feeParamsCache.feeMinPips)
+                ) * reserve1) /
+                uint256(feeParamsCache.reserve1Target);
         }
     }
 
@@ -97,7 +100,11 @@ abstract contract Fee is Ownable {
      *  EXTERNAL FUNCTIONS
      *
      */
-    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinPips, uint32 _feeMaxPips) external onlyOwner {
+    function setSwapFeeParams(
+        uint128 _reserve1Target,
+        uint32 _feeMinPips,
+        uint32 _feeMaxPips
+    ) external onlyOwner {
         if (_feeMinPips >= PIPS) revert Fee_setSwapFeeParams_invalidFeeMin();
         if (_feeMaxPips >= PIPS) revert Fee_setSwapFeeParams_invalidFeeMax();
 
@@ -105,6 +112,10 @@ abstract contract Fee is Ownable {
             revert Fee_setSwapFeeParams_inconsistentFeeParams();
         }
 
-        feeParams = FeeParams({reserve1Target: _reserve1Target, feeMinPips: _feeMinPips, feeMaxPips: _feeMaxPips});
+        feeParams = FeeParams({
+            reserve1Target: _reserve1Target,
+            feeMinPips: _feeMinPips,
+            feeMaxPips: _feeMaxPips
+        });
     }
 }

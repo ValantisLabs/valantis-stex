@@ -2,5 +2,10 @@
 pragma solidity ^0.8.25;
 
 interface IWithdrawalModule {
-    function burn(uint256 amountToken0) external;
+    function burnAfterWithdraw(
+        uint256 amountToken0,
+        address recipient
+    ) external;
+
+    function burnAfterSwap(uint256 amountToken0) external;
 }
