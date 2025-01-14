@@ -51,10 +51,10 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      *  CONSTRUCTOR
      *
      */
-    constructor(
-        address _pool,
-        address _withdrawalModule
-    ) Fee(_pool) ERC20("Hyped AMM LP", "HAMM") {
+    constructor(address _pool, address _owner, address _withdrawalModule)
+        Fee(_pool, _owner)
+        ERC20("Hyped AMM LP", "HAMM")
+    {
         if (_withdrawalModule == address(0)) revert HAMM__ZeroAddress();
 
         withdrawalModule = IWithdrawalModule(_withdrawalModule);
@@ -74,12 +74,10 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      * @param _recipient Address to mint LP tokens for.
      * @return shares Amount of shares minted.
      */
-    function deposit(
-        uint256 _amount,
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external returns (uint256 shares, uint256 amount) {
+    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        returns (uint256 shares, uint256 amount)
+    {
         _checkDeadline(_deadline);
 
         uint256 totalSupplyCache = totalSupply();
@@ -90,11 +88,7 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
         } else {
             (, uint256 reserve1) = _pool.getReserves();
 
-            shares = Math.mulDiv(
-                _amount,
-                totalSupplyCache,
-                reserve1 + amountToken0Queue
-            );
+            shares = Math.mulDiv(_amount, totalSupplyCache, reserve1 + amountToken0Queue);
         }
 
         if (shares < _minShares) revert HAMM__deposit_lessThanMinShares();
@@ -103,23 +97,17 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
 
         _mint(_recipient, shares);
 
-        (, amount) = _pool.depositLiquidity(
-            0,
-            _amount,
-            msg.sender,
-            new bytes(0),
-            abi.encode(msg.sender)
-        );
+        (, amount) = _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
 
     /**
      * @notice Callback to transfer tokens from user into `pool` during deposits.
      */
-    function onDepositLiquidityCallback(
-        uint256 /*_amount0*/,
-        uint256 _amount1,
-        bytes memory _data
-    ) external override onlyPool {
+    function onDepositLiquidityCallback(uint256, /*_amount0*/ uint256 _amount1, bytes memory _data)
+        external
+        override
+        onlyPool
+    {
         address user = abi.decode(_data, (address));
 
         // Only token1 deposits are allowed
@@ -135,7 +123,7 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      */
     function getLiquidityQuote(
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
-        bytes calldata /*_externalContext*/,
+        bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // Only swaps where tokenIn=token0 and tokenOut=token1 are allowed
@@ -143,8 +131,9 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
             revert HAMM__getLiquidityQuote_invalidSwapDirection();
         }
 
-        uint256 feePips = getFee();
+        uint256 feePips = getSwapFee();
 
+        // Pool must cann `onSwapCallback` to execute post-swap actions
         quote.isCallbackOnSwap = true;
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
         quote.amountOut = (quote.amountInFilled * (PIPS - feePips)) / PIPS;
@@ -157,17 +146,12 @@ contract HAMM is ISovereignALM, Fee, ERC20 {
      */
     function onSwapCallback(
         bool,
-        /*_isZeroToOne*/ uint256 _amountIn,
+        /*_isZeroToOne*/
+        uint256 _amountIn,
         uint256 /*_amountOut*/
     ) external override onlyPool {
         // Transfer token0 amount received from pool into withdrawal module
-        _pool.withdrawLiquidity(
-            _amountIn,
-            0,
-            address(0),
-            address(withdrawalModule),
-            new bytes(0)
-        );
+        _pool.withdrawLiquidity(_amountIn, 0, address(0), address(withdrawalModule), new bytes(0));
 
         // Send token0 amount to staking protocol's withdrawal queue
         withdrawalModule.burn(_amountIn);
