@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 
-import {ISovereignALM} from "@valantis-core/ALM/interfaces/ISovereignALM.sol";
 import {ALMLiquidityQuoteInput, ALMLiquidityQuote} from "@valantis-core/ALM/structs/SovereignALMStructs.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -11,8 +10,9 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 
 import {Fee} from "./Fee.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
+import {IHAMM} from "./interfaces/IHAMM.sol";
 
-contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
+contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
     using SafeERC20 for ERC20;
 
     /**
@@ -20,6 +20,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      *  CUSTOM ERRORS
      *
      */
+    error HAMM__OnlyWithdrawalModule();
     error HAMM__ZeroAddress();
     error HAMM__deposit_lessThanMinShares();
     error HAMM__deposit_zeroShares();
@@ -45,28 +46,28 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
 
     /**
      *
-     *  STORAGE
-     *
-     */
-    uint256 public amountToken0Queue;
-
-    /**
-     *
      *  CONSTRUCTOR
      *
      */
-    constructor(
-        address _pool,
-        address _owner,
-        address _withdrawalModule
-    ) Fee(_pool, _owner) ERC20("Hyped AMM LP", "HAMM") {
-        if (
-            _pool == address(0) ||
-            _owner == address(0) ||
-            _withdrawalModule == address(0)
-        ) revert HAMM__ZeroAddress();
+    constructor(address _pool, address _owner, address _withdrawalModule)
+        Fee(_pool, _owner)
+        ERC20("Hyped AMM LP", "HAMM")
+    {
+        if (_pool == address(0) || _owner == address(0) || _withdrawalModule == address(0)) revert HAMM__ZeroAddress();
 
         withdrawalModule = IWithdrawalModule(_withdrawalModule);
+    }
+
+    /**
+     *
+     *  MODIFIERS
+     *
+     */
+    modifier onlyWithdrawalModule() {
+        if (msg.sender != address(withdrawalModule)) {
+            revert HAMM__OnlyWithdrawalModule();
+        }
+        _;
     }
 
     /**
@@ -74,6 +75,9 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      *  EXTERNAL FUNCTIONS
      *
      */
+    function replenishPool(uint256 _amount) external override onlyWithdrawalModule nonReentrant {
+        _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
+    }
 
     /**
      * @notice Deposit liquidity into `pool` and mint LP tokens.
@@ -83,12 +87,12 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      * @param _recipient Address to mint LP tokens for.
      * @return shares Amount of shares minted.
      */
-    function deposit(
-        uint256 _amount,
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external nonReentrant returns (uint256 shares, uint256 amount) {
+    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        override
+        nonReentrant
+        returns (uint256 shares, uint256 amount)
+    {
         _checkDeadline(_deadline);
 
         uint256 totalSupplyCache = totalSupply();
@@ -99,11 +103,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
         } else {
             (, uint256 reserve1) = _pool.getReserves();
 
-            shares = Math.mulDiv(
-                _amount,
-                totalSupplyCache,
-                reserve1 + amountToken0Queue
-            );
+            shares = Math.mulDiv(_amount, totalSupplyCache, reserve1 + withdrawalModule.amountPendingUnstaking());
         }
 
         if (shares < _minShares) revert HAMM__deposit_lessThanMinShares();
@@ -112,13 +112,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
 
         _mint(_recipient, shares);
 
-        (, amount) = _pool.depositLiquidity(
-            0,
-            _amount,
-            msg.sender,
-            new bytes(0),
-            abi.encode(msg.sender)
-        );
+        (, amount) = _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
 
     /**
@@ -126,7 +120,8 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      */
     function onDepositLiquidityCallback(
         uint256,
-        /*_amount0*/ uint256 _amount1,
+        /*_amount0*/
+        uint256 _amount1,
         bytes memory _data
     ) external override onlyPool {
         address user = abi.decode(_data, (address));
@@ -147,13 +142,12 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      * @return amount0 Amount of token0 withdrawn. WARNING: Potentially innacurate in case token0 is rebase.
      * @return amount1 Amount of token1 withdrawn. WARNING: Potentially innacurate in case token1 is rebase.
      */
-    function withdraw(
-        uint256 _shares,
-        uint256 _amount0Min,
-        uint256 _amount1Min,
-        uint256 _deadline,
-        address _recipient
-    ) external nonReentrant returns (uint256 amount0, uint256 amount1) {
+    function withdraw(uint256 _shares, uint256 _amount0Min, uint256 _amount1Min, uint256 _deadline, address _recipient)
+        external
+        override
+        nonReentrant
+        returns (uint256 amount0, uint256 amount1)
+    {
         _checkDeadline(_deadline);
 
         if (_shares == 0) revert HAMM__withdraw_zeroShares();
@@ -166,7 +160,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
 
         uint256 totalSupplyCache = totalSupply();
         // token0 amount calculated as pro-rata share of token0 pending in withdrawal queue
-        amount0 = Math.mulDiv(amountToken0Queue, _shares, totalSupplyCache);
+        amount0 = Math.mulDiv(withdrawalModule.amountPendingUnstaking(), _shares, totalSupplyCache);
         // token1 amount calculated as pro-rata share of token1 reserves in the pool
         amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
 
@@ -181,7 +175,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
         // Burn LP tokens
         _burn(msg.sender, _shares);
 
-        // Send token0 withdrawal request to withdrawal queue,
+        // Send token0 withdrawal request to withdrawal module,
         // to be processed asynchronously
         if (amount0 > 0) {
             withdrawalModule.burnAfterWithdraw(amount0, _recipient);
@@ -189,13 +183,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
 
         // Withdraw token1 amount from pool and send to recipient
         if (amount1 > 0) {
-            _pool.withdrawLiquidity(
-                0,
-                amount1,
-                msg.sender,
-                _recipient,
-                new bytes(0)
-            );
+            _pool.withdrawLiquidity(0, amount1, msg.sender, _recipient, new bytes(0));
         }
     }
 
@@ -206,7 +194,7 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
      */
     function getLiquidityQuote(
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
-        bytes calldata /*_externalContext*/,
+        bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // Only swaps where tokenIn=token0 and tokenOut=token1 are allowed
@@ -234,18 +222,10 @@ contract HAMM is ISovereignALM, Fee, ERC20, ReentrancyGuardTransient {
         uint256 /*_amountOut*/
     ) external override onlyPool {
         // Transfer token0 amount received from pool into withdrawal module
-        _pool.withdrawLiquidity(
-            _amountIn,
-            0,
-            address(0),
-            address(withdrawalModule),
-            new bytes(0)
-        );
+        _pool.withdrawLiquidity(_amountIn, 0, address(0), address(withdrawalModule), new bytes(0));
 
         // Send token0 amount to staking protocol's withdrawal queue
         withdrawalModule.burnAfterSwap(_amountIn);
-
-        amountToken0Queue += _amountIn;
     }
 
     /**
