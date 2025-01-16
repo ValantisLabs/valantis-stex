@@ -3,15 +3,17 @@ pragma solidity ^0.8.25;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {ISwapFeeModuleMinimal, SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 
-abstract contract Fee is Ownable {
+abstract contract SwapFee is ISwapFeeModuleMinimal, Ownable {
     /**
      *
      *  CUSTOM ERRORS
      *
      */
     error Fee__onlyPool();
-    error Fee__getFee_ReserveToken1TargetIsZero();
+    error Fee__getSwapFeeInBips_InvalidSwapDirection();
+    error Fee__getSwapFeeInBips_ReserveToken1TargetIsZero();
     error Fee_setSwapFeeParams_invalidFeeMin();
     error Fee_setSwapFeeParams_invalidFeeMax();
     error Fee_setSwapFeeParams_inconsistentFeeParams();
@@ -23,8 +25,8 @@ abstract contract Fee is Ownable {
      */
     struct FeeParams {
         uint128 reserve1Target;
-        uint32 feeMinPips;
-        uint32 feeMaxPips;
+        uint32 feeMinBips;
+        uint32 feeMaxBips;
     }
 
     /**
@@ -32,7 +34,7 @@ abstract contract Fee is Ownable {
      *  CONSTANTS
      *
      */
-    uint256 internal constant PIPS = 1_000_000;
+    uint256 private constant BIPS = 10_000;
 
     /**
      *
@@ -74,20 +76,30 @@ abstract contract Fee is Ownable {
      *  VIEW FUNCTIONS
      *
      */
-    function getSwapFee() public view returns (uint256 feePips) {
+    function getSwapFeeInBips(
+        address _tokenIn,
+        address, /*_tokenOut*/
+        uint256, /*_amountIn*/
+        address, /*_user*/
+        bytes memory /*_swapFeeModuleContext*/
+    ) external view override returns (SwapFeeModuleData memory swapFeeModuleData) {
+        if (_tokenIn != _pool.token0()) {
+            revert Fee__getSwapFeeInBips_InvalidSwapDirection();
+        }
+
         (, uint256 reserve1) = _pool.getReserves();
 
         FeeParams memory feeParamsCache = feeParams;
 
         if (reserve1 > feeParamsCache.reserve1Target) {
-            feePips = uint256(feeParamsCache.feeMinPips);
+            swapFeeModuleData.feeInBips = uint256(feeParamsCache.feeMinBips);
         } else {
             if (feeParamsCache.reserve1Target == 0) {
-                revert Fee__getFee_ReserveToken1TargetIsZero();
+                revert Fee__getSwapFeeInBips_ReserveToken1TargetIsZero();
             }
 
-            feePips = uint256(feeParamsCache.feeMaxPips)
-                - (uint256((feeParamsCache.feeMaxPips - feeParamsCache.feeMinPips)) * reserve1)
+            swapFeeModuleData.feeInBips = uint256(feeParamsCache.feeMaxBips)
+                - (uint256((feeParamsCache.feeMaxBips - feeParamsCache.feeMinBips)) * reserve1)
                     / uint256(feeParamsCache.reserve1Target);
         }
     }
@@ -97,14 +109,14 @@ abstract contract Fee is Ownable {
      *  EXTERNAL FUNCTIONS
      *
      */
-    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinPips, uint32 _feeMaxPips) external onlyOwner {
-        if (_feeMinPips >= PIPS) revert Fee_setSwapFeeParams_invalidFeeMin();
-        if (_feeMaxPips >= PIPS) revert Fee_setSwapFeeParams_invalidFeeMax();
+    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinBips, uint32 _feeMaxBips) external onlyOwner {
+        if (_feeMinBips >= BIPS) revert Fee_setSwapFeeParams_invalidFeeMin();
+        if (_feeMaxBips >= BIPS) revert Fee_setSwapFeeParams_invalidFeeMax();
 
-        if (_feeMinPips > _feeMaxPips) {
+        if (_feeMinBips > _feeMaxBips) {
             revert Fee_setSwapFeeParams_inconsistentFeeParams();
         }
 
-        feeParams = FeeParams({reserve1Target: _reserve1Target, feeMinPips: _feeMinPips, feeMaxPips: _feeMaxPips});
+        feeParams = FeeParams({reserve1Target: _reserve1Target, feeMinBips: _feeMinBips, feeMaxBips: _feeMaxBips});
     }
 }

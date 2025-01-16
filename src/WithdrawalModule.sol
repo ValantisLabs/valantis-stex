@@ -135,13 +135,17 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
         idLPWithdrawal++;
     }
 
-    function burnAfterSwap(uint256 _amountToken0) external override onlyHAMM nonReentrant {
+    function unstakeToken0Reserves() external override nonReentrant {
+        hamm.unstakeToken0Reserves();
+
+        uint256 amountToken0 = token0.balanceOf(address(this));
+
         // Convert into token0 shares
-        uint256 sharesToken0 = token0.assetsToShares(_amountToken0);
+        uint256 sharesToken0 = token0.assetsToShares(amountToken0);
 
-        amountPendingUnstaking += _amountToken0;
+        amountPendingUnstaking += amountToken0;
 
-        // Burn _amountToken0 worth of token0 through withdrawal queue.
+        // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
         overseer.burn(address(this), sharesToken0);
     }

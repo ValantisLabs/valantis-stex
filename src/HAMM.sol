@@ -8,11 +8,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
-import {Fee} from "./Fee.sol";
+import {SwapFee} from "./SwapFee.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
 
-contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
+contract HAMM is IHAMM, SwapFee, ERC20, ReentrancyGuardTransient {
     using SafeERC20 for ERC20;
 
     /**
@@ -24,7 +24,7 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
     error HAMM__ZeroAddress();
     error HAMM__deposit_lessThanMinShares();
     error HAMM__deposit_zeroShares();
-    error HAMM__getLiquidityQuote_invalidSwapDirection();
+    error HAMM__setManagerFeeBips_invalidManagerFeeBips();
     error HAMM__withdraw_insufficientToken0Withdrawn();
     error HAMM__withdraw_insufficientToken1Withdrawn();
     error HAMM__withdraw_zeroShares();
@@ -50,7 +50,7 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
      *
      */
     constructor(address _pool, address _owner, address _withdrawalModule)
-        Fee(_pool, _owner)
+        SwapFee(_pool, _owner)
         ERC20("Hyped AMM LP", "HAMM")
     {
         if (_pool == address(0) || _owner == address(0) || _withdrawalModule == address(0)) revert HAMM__ZeroAddress();
@@ -75,6 +75,11 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
      *  EXTERNAL FUNCTIONS
      *
      */
+    function unstakeToken0Reserves() external override onlyWithdrawalModule nonReentrant {
+        (uint256 reserve0,) = _pool.getReserves();
+        _pool.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
+    }
+
     function replenishPool(uint256 _amount) external override onlyWithdrawalModule nonReentrant {
         _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
@@ -91,7 +96,7 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
         external
         override
         nonReentrant
-        returns (uint256 shares, uint256 amount)
+        returns (uint256 shares)
     {
         _checkDeadline(_deadline);
 
@@ -112,7 +117,7 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
 
         _mint(_recipient, shares);
 
-        (, amount) = _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
+        _pool.depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
 
     /**
@@ -196,37 +201,21 @@ contract HAMM is IHAMM, Fee, ERC20, ReentrancyGuardTransient {
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
         bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
-    ) external view override returns (ALMLiquidityQuote memory quote) {
-        // Only swaps where tokenIn=token0 and tokenOut=token1 are allowed
-        if (!_almLiquidityQuoteInput.isZeroToOne) {
-            revert HAMM__getLiquidityQuote_invalidSwapDirection();
-        }
-
-        uint256 feePips = getSwapFee();
-
-        // Pool must call `onSwapCallback` to execute post-swap actions
-        quote.isCallbackOnSwap = true;
+    ) external pure override returns (ALMLiquidityQuote memory quote) {
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
-        quote.amountOut = (quote.amountInFilled * (PIPS - feePips)) / PIPS;
+        quote.amountOut = quote.amountInFilled;
     }
 
     /**
      * @notice Callback to Liquidity Module after swap into liquidity pool.
-     * @dev Only callable by pool.
-     * @param _amountIn Amount of tokenIn in swap.
+     * @dev Not implemented.
      */
     function onSwapCallback(
         bool,
         /*_isZeroToOne*/
-        uint256 _amountIn,
+        uint256, /*_amountIn*/
         uint256 /*_amountOut*/
-    ) external override onlyPool {
-        // Transfer token0 amount received from pool into withdrawal module
-        _pool.withdrawLiquidity(_amountIn, 0, address(0), address(withdrawalModule), new bytes(0));
-
-        // Send token0 amount to staking protocol's withdrawal queue
-        withdrawalModule.burnAfterSwap(_amountIn);
-    }
+    ) external override {}
 
     /**
      *
