@@ -197,7 +197,8 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         // Swap fee in `SovereignPool::swap` is applied as:
         // amountIn * BIPS / (BIPS + swapFeeModuleData.feeInBips),
         // but our parametrization assumes the form: amountIn * (BIPS - feeInBips) / BIPS
-        // Hence we need to equate both and solve for `swapFeeModuleData.feeInBips`
+        // Hence we need to equate both and solve for `swapFeeModuleData.feeInBips`,
+        // with the constraint that feeInBips <= 5_000
         swapFeeModuleData.feeInBips = (BIPS * BIPS) / (BIPS - feeInBips) - BIPS;
     }
 

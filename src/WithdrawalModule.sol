@@ -125,7 +125,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      */
     receive() external payable {}
 
-    function burnAfterWithdraw(uint256 _amountToken0, address _recipient) external override onlyHAMM nonReentrant {
+    function burnAfterWithdraw(
+        uint256 _amountToken0,
+        address _recipient
+    ) external override onlyHAMM nonReentrant {
         amountPendingLPWithdrawal += _amountToken0;
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
@@ -140,14 +143,11 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
         uint256 amountToken0 = token0.balanceOf(address(this));
 
-        // Convert into token0 shares
-        uint256 sharesToken0 = token0.assetsToShares(amountToken0);
-
         amountPendingUnstaking += amountToken0;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
-        overseer.burn(address(this), sharesToken0);
+        overseer.burn(address(this), amountToken0);
     }
 
     function update() external nonReentrant {
@@ -159,8 +159,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
         // Reduce token0 amount which is pending unstaking
         uint256 amountPendingUnstakingCache = amountPendingUnstaking;
-        amountPendingUnstaking =
-            balanceCache > amountPendingUnstakingCache ? 0 : amountPendingUnstakingCache - balanceCache;
+        amountPendingUnstaking = balanceCache > amountPendingUnstakingCache
+            ? 0
+            : amountPendingUnstakingCache - balanceCache;
 
         // Prioritize LP withdrawal requests
         uint256 amountPendingLPWithdrawalCache = amountPendingLPWithdrawal;
@@ -197,8 +198,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
         // Check if it is the right time to claim (according to queue priority)
         if (
-            cumulativeAmountClaimableLPWithdrawal
-                < request.cumulativeAmountClaimableLPWithdrawalCheckpoint + request.amount
+            cumulativeAmountClaimableLPWithdrawal <
+            request.cumulativeAmountClaimableLPWithdrawalCheckpoint +
+                request.amount
         ) {
             revert WithdrawalModule__claim_cannotYetClaim();
         }
