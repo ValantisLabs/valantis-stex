@@ -4,13 +4,13 @@ pragma solidity ^0.8.25;
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
 import {IOverseer} from "./interfaces/IOverseer.sol";
 import {IstHYPE} from "./interfaces/IstHYPE.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
+import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
 contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     using SafeCast for uint256;
@@ -21,39 +21,26 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      *
      */
     error WithdrawalModule__ZeroAddress();
+    error WithdrawalModule__OnlyInitializer();
     error WithdrawalModule__OnlyHAMM();
     error WithdrawalModule__claim_cannotYetClaim();
     error WithdrawalModule__claim_insufficientAmountToClaim();
 
     /**
      *
-     *  STRUCTS
-     *
-     */
-    struct LPWithdrawalRequest {
-        address recipient;
-        uint96 amount;
-        uint256 cumulativeAmountClaimableLPWithdrawalCheckpoint;
-    }
-
-    /**
-     *
      *  IMMUTABLES
      *
      */
-    IOverseer public immutable overseer;
+    address public immutable overseer;
 
-    IstHYPE public immutable token0;
-
-    IHAMM public immutable hamm;
-
-    ISovereignPool public immutable pool;
+    address public immutable initializer;
 
     /**
      *
      *  STORAGE
      *
      */
+    address public hamm;
 
     /**
      * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
@@ -90,15 +77,13 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _overseer, address _pool) {
-        if (_overseer == address(0) || _pool == address(0)) {
+    constructor(address _overseer, address _initializer) {
+        if (_overseer == address(0) || _initializer == address(0)) {
             revert WithdrawalModule__ZeroAddress();
         }
 
-        overseer = IOverseer(_overseer);
-        pool = ISovereignPool(_pool);
-        hamm = IHAMM(pool.alm());
-        token0 = IstHYPE(pool.token0());
+        overseer = _overseer;
+        initializer = _initializer;
     }
 
     /**
@@ -106,8 +91,15 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      *  MODIFIERS
      *
      */
+    modifier onlyInitializer() {
+        if (msg.sender != initializer) {
+            revert WithdrawalModule__OnlyInitializer();
+        }
+        _;
+    }
+
     modifier onlyHAMM() {
-        if (msg.sender != address(hamm)) {
+        if (msg.sender != hamm) {
             revert WithdrawalModule__OnlyHAMM();
         }
         _;
@@ -118,17 +110,19 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      *  EXTERNAL FUNCTIONS
      *
      */
+    function setHAMM(address _hamm) external onlyInitializer {
+        if (_hamm == address(0)) revert WithdrawalModule__ZeroAddress();
+
+        hamm = _hamm;
+    }
 
     /**
      * @dev This contract will receive token1 in native form,
      *      as pending unstaking requests are settled.
      */
-    receive() external payable {}
+    receive() external payable nonReentrant {}
 
-    function burnAfterWithdraw(
-        uint256 _amountToken0,
-        address _recipient
-    ) external override onlyHAMM nonReentrant {
+    function burnAfterWithdraw(uint256 _amountToken0, address _recipient) external override onlyHAMM nonReentrant {
         amountPendingLPWithdrawal += _amountToken0;
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
@@ -139,29 +133,33 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     }
 
     function unstakeToken0Reserves() external override nonReentrant {
-        hamm.unstakeToken0Reserves();
+        IHAMM hammInterface = IHAMM(hamm);
+        hammInterface.unstakeToken0Reserves();
 
-        uint256 amountToken0 = token0.balanceOf(address(this));
+        address token0 = hammInterface.token0();
+        uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
 
         amountPendingUnstaking += amountToken0;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
-        overseer.burn(address(this), amountToken0);
+        IOverseer(overseer).burn(address(this), amountToken0);
     }
 
     function update() external nonReentrant {
         uint256 balanceCache = address(this).balance;
         // Need to ensure that enough ETH is reserved for settled LP withdrawals
-        if (balanceCache == 0 || balanceCache <= amountClaimableLPWithdrawal) {
+        uint256 amountClaimableLPWithdrawalCache = amountClaimableLPWithdrawal;
+        if (balanceCache == 0 || balanceCache <= amountClaimableLPWithdrawalCache) {
             return;
         }
 
+        balanceCache -= amountClaimableLPWithdrawalCache;
+
         // Reduce token0 amount which is pending unstaking
         uint256 amountPendingUnstakingCache = amountPendingUnstaking;
-        amountPendingUnstaking = balanceCache > amountPendingUnstakingCache
-            ? 0
-            : amountPendingUnstakingCache - balanceCache;
+        amountPendingUnstaking =
+            balanceCache > amountPendingUnstakingCache ? 0 : amountPendingUnstakingCache - balanceCache;
 
         // Prioritize LP withdrawal requests
         uint256 amountPendingLPWithdrawalCache = amountPendingLPWithdrawal;
@@ -175,17 +173,18 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
             amountClaimableLPWithdrawal += balanceCache;
             cumulativeAmountClaimableLPWithdrawal += balanceCache;
             balanceCache = 0;
+            return;
         }
 
-        if (balanceCache == 0) return;
-
         // Wrap native token into token1 and re-deposit into the pool
-        IWETH9 token1 = IWETH9(pool.token1());
+        IHAMM hammInterface = IHAMM(hamm);
+        address token1Address = hammInterface.token1();
+        IWETH9 token1 = IWETH9(token1Address);
 
         token1.deposit{value: balanceCache}();
-        token1.approve(address(hamm), balanceCache);
+        token1.approve(hamm, balanceCache);
 
-        hamm.replenishPool(balanceCache);
+        hammInterface.replenishPool(balanceCache);
     }
 
     function claim(uint256 _idLPQueue) external nonReentrant {
@@ -198,9 +197,8 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
         // Check if it is the right time to claim (according to queue priority)
         if (
-            cumulativeAmountClaimableLPWithdrawal <
-            request.cumulativeAmountClaimableLPWithdrawalCheckpoint +
-                request.amount
+            cumulativeAmountClaimableLPWithdrawal
+                < request.cumulativeAmountClaimableLPWithdrawalCheckpoint + request.amount
         ) {
             revert WithdrawalModule__claim_cannotYetClaim();
         }
