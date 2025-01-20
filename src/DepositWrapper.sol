@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IWETH9} from "./interfaces/IWETH9.sol";
@@ -41,6 +42,13 @@ contract DepositWrapper {
         amountInUsed = hamm.swapOneToZeroEqualAmounts(amount, _recipient);
 
         weth.forceApprove(address(hamm), 0);
+
+        uint256 amountInRemaining = amount - amountInUsed;
+        // Refund left-over native token
+        if (amountInRemaining > 0) {
+            weth.withdraw(amountInRemaining);
+            Address.sendValue(payable(_recipient), amountInRemaining);
+        }
     }
 
     function _wrapAndApprove(uint256 amount) private {
