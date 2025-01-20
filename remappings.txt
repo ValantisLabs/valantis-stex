@@ -1,3 +1,4 @@
 forge-std/=lib/forge-std/src/
 @valantis-core/=lib/valantis-core/src/
 @openzeppelin/=lib/openzeppelin-contracts/
+@solmate/=lib/solmate/src/
