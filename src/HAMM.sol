@@ -34,6 +34,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error HAMM__getSwapFeeInBips_InvalidSwapDirection();
     error HAMM__getSwapFeeInBips_ReserveToken1TargetIsZero();
     error HAMM__onSwapCallback_NotImplemented();
+    error HAMM__receive_onlyWETH9();
     error HAMM__setSwapFeeParams_inconsistentFeeParams();
     error HAMM__setManagerFeeBips_invalidManagerFeeBips();
     error HAMM__setSwapFeeParams_invalidFeeMin();
@@ -227,6 +228,10 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
 
+    receive() external payable {
+        if (msg.sender != token1) revert HAMM__receive_onlyWETH9();
+    }
+
     /**
      * @notice Update AMM's dynamic swap fee parameters.
      * @dev Only callable by `owner`.
@@ -419,6 +424,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _deadline Block timestamp after which this call reverts.
      * @param _recipient Address to receive token0 and token1 amounts.
      * @param _unwrapToNativeToken True if pool's token1 is WETH and `_recipient` wants the native token.
+     * @param _isInstantWithdrawal True if user wants to swap token0 amount into token1 against the pool.
      * @return amount0 Amount of token0 withdrawn. WARNING: Potentially innacurate in case token0 is rebase.
      * @return amount1 Amount of token1 withdrawn. WARNING: Potentially innacurate in case token1 is rebase.
      */
