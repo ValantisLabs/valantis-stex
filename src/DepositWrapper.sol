@@ -23,10 +23,28 @@ contract DepositWrapper {
         address _recipient
     ) external payable returns (uint256 shares) {
         uint256 amount = msg.value;
+        if (amount == 0) return 0;
 
-        weth.deposit{value: amount}();
-        weth.forceApprove(address(hamm), amount);
+        _wrapAndApprove(amount);
 
         shares = hamm.deposit(amount, _minShares, _deadline, _recipient);
+    }
+
+    function swapFromNative(
+        address _recipient
+    ) external payable returns (uint256 amountInUsed) {
+        uint256 amount = msg.value;
+        if (amount == 0) return 0;
+
+        _wrapAndApprove(amount);
+
+        amountInUsed = hamm.swapOneToZeroEqualAmounts(amount, _recipient);
+
+        weth.forceApprove(address(hamm), 0);
+    }
+
+    function _wrapAndApprove(uint256 amount) private {
+        weth.deposit{value: amount}();
+        weth.forceApprove(address(hamm), amount);
     }
 }

@@ -103,7 +103,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             _token1,
             _protocolFactory,
             address(this),
-            address(this),
+            address(0),
             address(0),
             false,
             false,
@@ -347,6 +347,41 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             new bytes(0),
             abi.encode(msg.sender)
         );
+    }
+
+    /**
+     * @notice Allows anyone to swap from token1 into token0 at 1:1 exchange rate,
+     * @dev    Rebalances the pool without the need to send its accummulated token0 reserves to `withdrawalModule`.
+     * @param _amountIn Amount of token1 to swap.
+     * @param _recipient Address of token0 recipient.
+     */
+    function swapOneToZeroEqualAmounts(
+        uint256 _amountIn,
+        address _recipient
+    ) external nonReentrant returns (uint256 amountInUsed) {
+        ISovereignPool poolInterface = ISovereignPool(pool);
+
+        (uint256 reserve0, ) = poolInterface.getReserves();
+        // Partial-fill in case there are not enough token0 reserves
+        amountInUsed = _amountIn > reserve0 ? reserve0 : _amountIn;
+
+        if (amountInUsed > 0) {
+            poolInterface.depositLiquidity(
+                0,
+                amountInUsed,
+                msg.sender,
+                new bytes(0),
+                abi.encode(msg.sender)
+            );
+
+            poolInterface.withdrawLiquidity(
+                amountInUsed,
+                0,
+                msg.sender,
+                _recipient,
+                new bytes(0)
+            );
+        }
     }
 
     /**

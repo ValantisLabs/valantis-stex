@@ -31,6 +31,11 @@ interface IHAMM is ISovereignALM, ISwapFeeModuleMinimal {
 
     function replenishPool(uint256 _amount) external;
 
+    function swapOneToZeroEqualAmounts(
+        uint256 _amountIn,
+        address _recipient
+    ) external returns (uint256 amountInUsed);
+
     function deposit(
         uint256 _amount,
         uint256 _minShares,
