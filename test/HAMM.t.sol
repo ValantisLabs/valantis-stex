@@ -15,16 +15,20 @@ import {WETH} from "@solmate/tokens/WETH.sol";
 import {HAMM} from "src/HAMM.sol";
 import {WithdrawalModule} from "src/WithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
+import {MockStHype} from "src/mocks/MockStHype.sol";
+import {DepositWrapper} from "src/DepositWrapper.sol";
 import {FeeParams} from "src/structs/HAMMStructs.sol";
 
 contract HAMMTest is Test {
     HAMM hamm;
     WithdrawalModule withdrawalModule;
 
+    DepositWrapper depositWrapper;
+
     ProtocolFactory protocolFactory;
 
     WETH weth;
-    ERC20Mock token0;
+    MockStHype token0;
 
     MockOverseer overseer;
 
@@ -48,7 +52,7 @@ contract HAMMTest is Test {
             address(this)
         );
 
-        token0 = new ERC20Mock();
+        token0 = new MockStHype();
         weth = new WETH();
 
         hamm = new HAMM(
@@ -61,11 +65,21 @@ contract HAMMTest is Test {
             address(withdrawalModule)
         );
         withdrawalModule.setHAMM(address(hamm));
+        assertEq(withdrawalModule.hamm(), address(hamm));
+
+        depositWrapper = new DepositWrapper(address(weth), address(hamm));
 
         pool = ISovereignPool(hamm.pool());
 
-        vm.deal(address(this), 200 ether);
+        vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
+        // Simulates a positive rebase
+        vm.deal(address(token0), 20 ether);
+        uint256 shares = token0.mint{value: 100 ether}(address(this));
+        assertEq(shares, 100 ether);
+        assertEq(token0.totalSupply(), shares);
+        assertEq(token0.balanceOf(address(this)), shares);
+        assertEq(address(token0).balance, 120 ether);
     }
 
     function testDeploy() public {
@@ -104,7 +118,7 @@ contract HAMMTest is Test {
         assertEq(poolDeployment.poolManager(), address(hammDeployment));
     }
 
-    function testSwapSwapFeeParams() public {
+    function testSetSwapFeeParams() public {
         _setSwapFeeParams(100 ether, 1, 20);
     }
 
@@ -145,7 +159,7 @@ contract HAMMTest is Test {
         vm.stopPrank();
     }
 
-    function testSwapPoolManagerFeeBips() public {
+    function testSetPoolManagerFeeBips() public {
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
@@ -203,6 +217,33 @@ contract HAMMTest is Test {
         assertEq(reserve1, amount + 1e9 + 1);
     }
 
+    function testDeposit__FromNativeToken() public {
+        testDeposit();
+
+        address recipient = makeAddr("NATIVE_TOKEN_RECIPIENT");
+        uint256 shares = depositWrapper.depositFromNative(
+            0,
+            block.timestamp,
+            recipient
+        );
+        // No native token has been sent
+        assertEq(shares, 0);
+
+        uint256 amount = 2 ether;
+        (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
+        shares = depositWrapper.depositFromNative{value: amount}(
+            0,
+            block.timestamp,
+            recipient
+        );
+        assertGt(shares, 0);
+        assertEq(weth.allowance(address(depositWrapper), address(hamm)), 0);
+        assertEq(hamm.balanceOf(recipient), shares);
+        (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
+        assertEq(preReserve0, postReserve0);
+        assertEq(preReserve1 + amount, postReserve1);
+    }
+
     function testOnDepositLiquidityCallback() public {
         vm.expectRevert(HAMM.HAMM__OnlyPool.selector);
         hamm.onDepositLiquidityCallback(0, 0, new bytes(0));
@@ -226,6 +267,7 @@ contract HAMMTest is Test {
     }
 
     function testGetLiquidityQuote() public view {
+        // Test token1 -> token0
         ALMLiquidityQuoteInput memory input;
         input.amountInMinusFee = 123e18;
         ALMLiquidityQuote memory quote = hamm.getLiquidityQuote(
@@ -234,7 +276,22 @@ contract HAMMTest is Test {
             new bytes(0)
         );
         assertEq(quote.amountInFilled, input.amountInMinusFee);
-        assertEq(quote.amountOut, input.amountInMinusFee);
+        // tokenOut=token0 balances represents shares of ETH
+        assertEq(
+            quote.amountOut,
+            (input.amountInMinusFee * token0.totalSupply()) /
+                address(token0).balance
+        );
+
+        // Test token0 -> token1
+        input.isZeroToOne = true;
+        quote = hamm.getLiquidityQuote(input, new bytes(0), new bytes(0));
+        assertEq(quote.amountInFilled, input.amountInMinusFee);
+        assertEq(
+            quote.amountOut,
+            (input.amountInMinusFee * address(token0).balance) /
+                token0.totalSupply()
+        );
     }
 
     function testOnSwapCallback() public {

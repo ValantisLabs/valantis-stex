@@ -23,6 +23,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     error WithdrawalModule__ZeroAddress();
     error WithdrawalModule__OnlyInitializer();
     error WithdrawalModule__OnlyHAMM();
+    error WithdrawalModule__claim_alreadyClaimed();
     error WithdrawalModule__claim_cannotYetClaim();
     error WithdrawalModule__claim_insufficientAmountToClaim();
 
@@ -45,22 +46,22 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     /**
      * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
      */
-    uint256 public amountPendingUnstaking;
+    uint256 public amountToken0PendingUnstaking;
 
     /**
      * @notice Amount of native `token1` which is owed to HAMM LPs who have burnt their LP tokens.
      */
-    uint256 public amountPendingLPWithdrawal;
+    uint256 public amountToken1PendingLPWithdrawal;
 
     /**
      * @notice Amount of native `token1` which is ready for eligible HAMM LPs to claim.
      */
-    uint256 public amountClaimableLPWithdrawal;
+    uint256 public amountToken1ClaimableLPWithdrawal;
 
     /**
      * @notice Cumulative amount of native `token1` claimable by LP withdrawals.
      */
-    uint256 public cumulativeAmountClaimableLPWithdrawal;
+    uint256 public cumulativeAmountToken1ClaimableLPWithdrawal;
 
     /**
      * @notice Unique identifier for each LP Withdrawal Request.
@@ -107,6 +108,21 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
     /**
      *
+     *  VIEW FUNCTIONS
+     *
+     */
+    function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
+        address token0 = IHAMM(hamm).token0();
+        return IstHYPE(token0).assetsToShares(_amountToken1);
+    }
+
+    function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
+        address token0 = IHAMM(hamm).token0();
+        return IstHYPE(token0).sharesToAssets(_amountToken0);
+    }
+
+    /**
+     *
      *  EXTERNAL FUNCTIONS
      *
      */
@@ -122,15 +138,22 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      */
     receive() external payable nonReentrant {}
 
-    function burnAfterWithdraw(
-        uint256 _amountToken0,
-        address _recipient
-    ) external override onlyHAMM nonReentrant {
-        amountPendingLPWithdrawal += _amountToken0;
+    function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
+        external
+        override
+        onlyHAMM
+        nonReentrant
+    {
+        // stHYPE's balances represent shares,
+        // so we need to calculate the equivalent amount in token1 (equivalently, native token)
+        uint256 amountToken1 = convertToToken1(_amountToken0);
+
+        amountToken1PendingLPWithdrawal += amountToken1;
+
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
-            amount: _amountToken0.toUint96(),
-            cumulativeAmountClaimableLPWithdrawalCheckpoint: cumulativeAmountClaimableLPWithdrawal
+            amountToken1: amountToken1.toUint96(),
+            cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint: cumulativeAmountToken1ClaimableLPWithdrawal
         });
         idLPWithdrawal++;
     }
@@ -142,43 +165,41 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
         address token0 = hammInterface.token0();
         uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
 
-        amountPendingUnstaking += amountToken0;
+        amountToken0PendingUnstaking += amountToken0;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
+        // WARNING: token0 balances represent shares, hence the equivalent amount of token1 is not 1:1
         IOverseer(overseer).burn(address(this), amountToken0);
     }
 
     function update() external nonReentrant {
         uint256 balanceCache = address(this).balance;
-        // Need to ensure that enough ETH is reserved for settled LP withdrawals
-        uint256 amountClaimableLPWithdrawalCache = amountClaimableLPWithdrawal;
-        if (
-            balanceCache == 0 ||
-            balanceCache <= amountClaimableLPWithdrawalCache
-        ) {
+        // Need to ensure that enough native token is reserved for settled LP withdrawals
+        uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
+        if (balanceCache == 0 || balanceCache <= amountToken1ClaimableLPWithdrawalCache) {
             return;
         }
 
-        balanceCache -= amountClaimableLPWithdrawalCache;
+        balanceCache -= amountToken1ClaimableLPWithdrawalCache;
 
         // Update token0 amount which was pending unstaking
-        uint256 amountPendingUnstakingCache = amountPendingUnstaking;
-        amountPendingUnstaking = balanceCache > amountPendingUnstakingCache
-            ? 0
-            : amountPendingUnstakingCache - balanceCache;
+        // TODO: convert to token1
+        uint256 amountToken0PendingUnstakingCache = amountToken0PendingUnstaking;
+        amountToken0PendingUnstaking =
+            balanceCache > amountToken0PendingUnstakingCache ? 0 : amountToken0PendingUnstakingCache - balanceCache;
 
         // Prioritize LP withdrawal requests
-        uint256 amountPendingLPWithdrawalCache = amountPendingLPWithdrawal;
-        if (balanceCache > amountPendingLPWithdrawalCache) {
-            balanceCache -= amountPendingLPWithdrawalCache;
-            amountClaimableLPWithdrawal += amountPendingLPWithdrawalCache;
-            cumulativeAmountClaimableLPWithdrawal += amountPendingLPWithdrawalCache;
-            amountPendingLPWithdrawal = 0;
+        uint256 amountToken1PendingLPWithdrawalCache = amountToken1PendingLPWithdrawal;
+        if (balanceCache > amountToken1PendingLPWithdrawalCache) {
+            balanceCache -= amountToken1PendingLPWithdrawalCache;
+            amountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
+            cumulativeAmountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
+            amountToken1PendingLPWithdrawal = 0;
         } else {
-            amountPendingLPWithdrawal -= balanceCache;
-            amountClaimableLPWithdrawal += balanceCache;
-            cumulativeAmountClaimableLPWithdrawal += balanceCache;
+            amountToken1PendingLPWithdrawal -= balanceCache;
+            amountToken1ClaimableLPWithdrawal += balanceCache;
+            cumulativeAmountToken1ClaimableLPWithdrawal += balanceCache;
             balanceCache = 0;
             return;
         }
@@ -197,25 +218,28 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     function claim(uint256 _idLPQueue) external nonReentrant {
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
+        if (request.amountToken1 == 0) {
+            revert WithdrawalModule__claim_alreadyClaimed();
+        }
+
         // Check if there is enough ETH available to fulfill this request
-        if (request.amount < amountClaimableLPWithdrawal) {
+        if (request.amountToken1 < amountToken1ClaimableLPWithdrawal) {
             revert WithdrawalModule__claim_insufficientAmountToClaim();
         }
 
         // Check if it is the right time to claim (according to queue priority)
         if (
-            cumulativeAmountClaimableLPWithdrawal <
-            request.cumulativeAmountClaimableLPWithdrawalCheckpoint +
-                request.amount
+            cumulativeAmountToken1ClaimableLPWithdrawal
+                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
         ) {
             revert WithdrawalModule__claim_cannotYetClaim();
         }
 
-        amountClaimableLPWithdrawal -= request.amount;
+        amountToken1ClaimableLPWithdrawal -= request.amountToken1;
 
         delete LPWithdrawals[_idLPQueue];
 
         // Send equivalent amount of native token to recipient
-        Address.sendValue(payable(request.recipient), request.amount);
+        Address.sendValue(payable(request.recipient), request.amountToken1);
     }
 }

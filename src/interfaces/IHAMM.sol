@@ -17,11 +17,7 @@ interface IHAMM is ISovereignALM, ISwapFeeModuleMinimal {
 
     function withdrawalModule() external view returns (address);
 
-    function setSwapFeeParams(
-        uint128 _reserve1Target,
-        uint32 _feeMinBips,
-        uint32 _feeMaxBips
-    ) external;
+    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinBips, uint32 _feeMaxBips) external;
 
     function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external;
 
@@ -31,17 +27,9 @@ interface IHAMM is ISovereignALM, ISwapFeeModuleMinimal {
 
     function replenishPool(uint256 _amount) external;
 
-    function swapOneToZeroEqualAmounts(
-        uint256 _amountIn,
-        address _recipient
-    ) external returns (uint256 amountInUsed);
-
-    function deposit(
-        uint256 _amount,
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external returns (uint256 shares);
+    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        returns (uint256 shares);
 
     function withdraw(
         uint256 _shares,
