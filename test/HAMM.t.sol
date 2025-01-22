@@ -16,14 +16,14 @@ import {HAMM} from "src/HAMM.sol";
 import {WithdrawalModule} from "src/WithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
-import {DepositWrapper} from "src/DepositWrapper.sol";
+import {HAMMNativeTokenWrapper} from "src/HAMMNativeTokenWrapper.sol";
 import {FeeParams} from "src/structs/HAMMStructs.sol";
 
 contract HAMMTest is Test {
     HAMM hamm;
     WithdrawalModule withdrawalModule;
 
-    DepositWrapper depositWrapper;
+    HAMMNativeTokenWrapper nativeWrapper;
 
     ProtocolFactory protocolFactory;
 
@@ -67,7 +67,10 @@ contract HAMMTest is Test {
         withdrawalModule.setHAMM(address(hamm));
         assertEq(withdrawalModule.hamm(), address(hamm));
 
-        depositWrapper = new DepositWrapper(address(weth), address(hamm));
+        nativeWrapper = new HAMMNativeTokenWrapper(
+            address(weth),
+            address(hamm)
+        );
 
         pool = ISovereignPool(hamm.pool());
 
@@ -221,7 +224,7 @@ contract HAMMTest is Test {
         testDeposit();
 
         address recipient = makeAddr("NATIVE_TOKEN_RECIPIENT");
-        uint256 shares = depositWrapper.depositFromNative(
+        uint256 shares = nativeWrapper.depositFromNative(
             0,
             block.timestamp,
             recipient
@@ -231,13 +234,13 @@ contract HAMMTest is Test {
 
         uint256 amount = 2 ether;
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        shares = depositWrapper.depositFromNative{value: amount}(
+        shares = nativeWrapper.depositFromNative{value: amount}(
             0,
             block.timestamp,
             recipient
         );
         assertGt(shares, 0);
-        assertEq(weth.allowance(address(depositWrapper), address(hamm)), 0);
+        assertEq(weth.allowance(address(nativeWrapper), address(hamm)), 0);
         assertEq(hamm.balanceOf(recipient), shares);
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
