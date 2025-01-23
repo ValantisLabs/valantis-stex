@@ -12,3 +12,9 @@ docs/
 
 # Dotenv file
 .env
+
+# Foundry coverage
+lcov.info
+lcov.info.pruned
+report
+coverage/

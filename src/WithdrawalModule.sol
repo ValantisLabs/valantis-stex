@@ -127,7 +127,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     }
 
     function amountToken0PendingUnstaking() public view override returns (uint256) {
-        uint256 excessNative = address(this).balance - amountToken1ClaimableLPWithdrawal;
+        uint256 balanceNative = address(this).balance;
+        uint256 excessNative =
+            balanceNative > amountToken1ClaimableLPWithdrawal ? balanceNative - amountToken1ClaimableLPWithdrawal : 0;
         uint256 excessToken0 = excessNative > 0 ? convertToToken0(excessNative) : 0;
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
@@ -202,6 +204,14 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         }
 
         balanceCache -= amountToken1ClaimableLPWithdrawalCache;
+
+        // Having a surplus balance of native token means that new unstaking requests have been processed
+        uint256 excessToken0 = convertToToken0(balanceCache);
+        if (_amountToken0PendingUnstaking > excessToken0) {
+            _amountToken0PendingUnstaking -= excessToken0;
+        } else {
+            _amountToken0PendingUnstaking = 0;
+        }
 
         // Prioritize LP withdrawal requests
         uint256 amountToken1PendingLPWithdrawalCache = amountToken1PendingLPWithdrawal;
