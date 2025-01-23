@@ -2,7 +2,8 @@
 pragma solidity ^0.8.25;
 
 struct FeeParams {
-    uint128 reserve1Target;
+    uint32 minThresholdRatioBips;
+    uint32 maxThresholdRatioBips;
     uint32 feeMinBips;
     uint32 feeMaxBips;
 }

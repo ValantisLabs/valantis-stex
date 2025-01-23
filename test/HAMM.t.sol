@@ -55,7 +55,7 @@ contract HAMMTest is Test {
             address(this)
         );
 
-        swapFeeModule = new HAMMSwapFeeModule(owner);
+        swapFeeModule = new HAMMSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
 
         token0 = new MockStHype();
@@ -105,7 +105,8 @@ contract HAMMTest is Test {
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
         HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(
-            owner
+            owner,
+            address(withdrawalModuleDeployment)
         );
         assertEq(swapFeeModuleDeployment.owner(), owner);
 
@@ -158,11 +159,12 @@ contract HAMMTest is Test {
     }
 
     function testSetSwapFeeParams() public {
-        _setSwapFeeParams(100 ether, 1, 20);
+        _setSwapFeeParams(1000, 7000, 1, 20);
     }
 
     function _setSwapFeeParams(
-        uint128 reserve1Target,
+        uint32 minThresholdRatioBips,
+        uint32 maxThresholdRatioBips,
         uint32 feeMinBips,
         uint32 feeMaxBips
     ) private {
@@ -172,7 +174,12 @@ contract HAMMTest is Test {
                 address(this)
             )
         );
-        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
+        swapFeeModule.setSwapFeeParams(
+            minThresholdRatioBips,
+            maxThresholdRatioBips,
+            feeMinBips,
+            feeMaxBips
+        );
 
         vm.startPrank(owner);
 
@@ -181,27 +188,52 @@ contract HAMMTest is Test {
                 .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin
                 .selector
         );
-        swapFeeModule.setSwapFeeParams(reserve1Target, 5_000, feeMaxBips);
+        swapFeeModule.setSwapFeeParams(
+            minThresholdRatioBips,
+            maxThresholdRatioBips,
+            5_000,
+            feeMaxBips
+        );
 
         vm.expectRevert(
             HAMMSwapFeeModule
                 .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax
                 .selector
         );
-        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, 5_000);
+        swapFeeModule.setSwapFeeParams(
+            minThresholdRatioBips,
+            maxThresholdRatioBips,
+            feeMinBips,
+            5_000
+        );
 
         vm.expectRevert(
             HAMMSwapFeeModule
                 .HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams
                 .selector
         );
-        swapFeeModule.setSwapFeeParams(reserve1Target, 2, 1);
+        swapFeeModule.setSwapFeeParams(
+            minThresholdRatioBips,
+            maxThresholdRatioBips,
+            2,
+            1
+        );
 
-        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
+        swapFeeModule.setSwapFeeParams(
+            minThresholdRatioBips,
+            maxThresholdRatioBips,
+            feeMinBips,
+            feeMaxBips
+        );
 
-        (uint128 reserveTarget, uint32 feeMin, uint32 feeMax) = swapFeeModule
-            .feeParams();
-        assertEq(reserveTarget, reserve1Target);
+        (
+            uint32 minThresholdRatio,
+            uint32 maxThresholdRatio,
+            uint32 feeMin,
+            uint32 feeMax
+        ) = swapFeeModule.feeParams();
+        assertEq(minThresholdRatio, minThresholdRatioBips);
+        assertEq(maxThresholdRatio, maxThresholdRatioBips);
         assertEq(feeMin, feeMinBips);
         assertEq(feeMax, feeMaxBips);
 

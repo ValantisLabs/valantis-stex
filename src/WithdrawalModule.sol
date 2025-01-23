@@ -15,7 +15,11 @@ import {IWETH9} from "./interfaces/IWETH9.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
-contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
+contract WithdrawalModule is
+    IWithdrawalModule,
+    ReentrancyGuardTransient,
+    Ownable
+{
     using SafeCast for uint256;
     using SafeERC20 for IWETH9;
 
@@ -51,7 +55,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     /**
      * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
      */
-    uint256 public amountToken0PendingUnstaking;
+    uint256 private _amountToken0PendingUnstaking;
 
     /**
      * @notice Amount of native `token1` which is owed to HAMM LPs who have burnt their LP tokens.
@@ -83,8 +87,16 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  CONSTRUCTOR
      *
      */
-    constructor(address _overseer, address _initializer, address _owner) Ownable(_owner) {
-        if (_overseer == address(0) || _initializer == address(0) || _owner == address(0)) {
+    constructor(
+        address _overseer,
+        address _initializer,
+        address _owner
+    ) Ownable(_owner) {
+        if (
+            _overseer == address(0) ||
+            _initializer == address(0) ||
+            _owner == address(0)
+        ) {
             revert WithdrawalModule__ZeroAddress();
         }
 
@@ -116,14 +128,38 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  VIEW FUNCTIONS
      *
      */
-    function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
+    function convertToToken0(
+        uint256 _amountToken1
+    ) public view override returns (uint256) {
         address token0 = IHAMM(hamm).token0();
         return IstHYPE(token0).assetsToShares(_amountToken1);
     }
 
-    function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
+    function convertToToken1(
+        uint256 _amountToken0
+    ) public view override returns (uint256) {
         address token0 = IHAMM(hamm).token0();
         return IstHYPE(token0).sharesToAssets(_amountToken0);
+    }
+
+    function amountToken0PendingUnstaking()
+        public
+        view
+        override
+        returns (uint256)
+    {
+        uint256 excessNative = address(this).balance -
+            amountToken1ClaimableLPWithdrawal;
+        uint256 excessToken0 = excessNative > 0
+            ? convertToToken0(excessNative)
+            : 0;
+
+        uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
+        if (amountToken0PendingUnstakingCache > excessToken0) {
+            return amountToken0PendingUnstakingCache - excessToken0;
+        } else {
+            return 0;
+        }
     }
 
     /**
@@ -145,12 +181,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      */
     receive() external payable nonReentrant {}
 
-    function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
-        external
-        override
-        onlyHAMM
-        nonReentrant
-    {
+    function burnToken0AfterWithdraw(
+        uint256 _amountToken0,
+        address _recipient
+    ) external override onlyHAMM nonReentrant {
         // stHYPE's balances represent shares,
         // so we need to calculate the equivalent amount expected in token1 (equivalently, native token)
         uint256 amountToken1 = convertToToken1(_amountToken0);
@@ -172,7 +206,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         address token0 = hammInterface.token0();
         uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
 
-        amountToken0PendingUnstaking += amountToken0;
+        _amountToken0PendingUnstaking += amountToken0;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
@@ -185,17 +219,14 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         uint256 balanceCache = address(this).balance;
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
-        if (balanceCache == 0 || balanceCache <= amountToken1ClaimableLPWithdrawalCache) {
+        if (
+            balanceCache == 0 ||
+            balanceCache <= amountToken1ClaimableLPWithdrawalCache
+        ) {
             return;
         }
 
         balanceCache -= amountToken1ClaimableLPWithdrawalCache;
-
-        // Update token0 amount which was pending unstaking
-        // TODO: convert to token1
-        uint256 amountToken0PendingUnstakingCache = amountToken0PendingUnstaking;
-        amountToken0PendingUnstaking =
-            balanceCache > amountToken0PendingUnstakingCache ? 0 : amountToken0PendingUnstakingCache - balanceCache;
 
         // Prioritize LP withdrawal requests
         uint256 amountToken1PendingLPWithdrawalCache = amountToken1PendingLPWithdrawal;
@@ -237,8 +268,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
 
         // Check if it is the right time to claim (according to queue priority)
         if (
-            cumulativeAmountToken1ClaimableLPWithdrawal
-                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
+            cumulativeAmountToken1ClaimableLPWithdrawal <
+            request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint +
+                request.amountToken1
         ) {
             revert WithdrawalModule__claim_cannotYetClaim();
         }
