@@ -5,6 +5,9 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IOverseer} from "./interfaces/IOverseer.sol";
 import {IstHYPE} from "./interfaces/IstHYPE.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
@@ -12,8 +15,9 @@ import {IWETH9} from "./interfaces/IWETH9.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
-contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
+contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
     using SafeCast for uint256;
+    using SafeERC20 for IWETH9;
 
     /**
      *
@@ -26,6 +30,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
     error WithdrawalModule__claim_alreadyClaimed();
     error WithdrawalModule__claim_cannotYetClaim();
     error WithdrawalModule__claim_insufficientAmountToClaim();
+    error WithdrawalModule__setHAMM_AlreadySet();
 
     /**
      *
@@ -78,8 +83,8 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _overseer, address _initializer) {
-        if (_overseer == address(0) || _initializer == address(0)) {
+    constructor(address _overseer, address _initializer, address _owner) Ownable(_owner) {
+        if (_overseer == address(0) || _initializer == address(0) || _owner == address(0)) {
             revert WithdrawalModule__ZeroAddress();
         }
 
@@ -128,6 +133,8 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
      */
     function setHAMM(address _hamm) external onlyInitializer {
         if (_hamm == address(0)) revert WithdrawalModule__ZeroAddress();
+        // Can only be set once
+        if (hamm != address(0)) revert WithdrawalModule__setHAMM_AlreadySet();
 
         hamm = _hamm;
     }
@@ -145,7 +152,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
         nonReentrant
     {
         // stHYPE's balances represent shares,
-        // so we need to calculate the equivalent amount in token1 (equivalently, native token)
+        // so we need to calculate the equivalent amount expected in token1 (equivalently, native token)
         uint256 amountToken1 = convertToToken1(_amountToken0);
 
         amountToken1PendingLPWithdrawal += amountToken1;
@@ -158,7 +165,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
         idLPWithdrawal++;
     }
 
-    function unstakeToken0Reserves() external override nonReentrant {
+    function unstakeToken0Reserves() external override nonReentrant onlyOwner {
         IHAMM hammInterface = IHAMM(hamm);
         hammInterface.unstakeToken0Reserves();
 
@@ -169,7 +176,8 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
-        // WARNING: token0 balances represent shares, hence the equivalent amount of token1 is not 1:1
+        // WARNING: token0 balances represent shares,
+        // hence the equivalent amount of token1 to be received is not 1:1
         IOverseer(overseer).burn(address(this), amountToken0);
     }
 
@@ -210,9 +218,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient {
         IWETH9 token1 = IWETH9(token1Address);
 
         token1.deposit{value: balanceCache}();
-        token1.approve(hamm, balanceCache);
-
-        hammInterface.replenishPool(balanceCache);
+        // Pool reserves are measured as balances, hence we can replenish it with token1
+        // by transferring directly
+        token1.safeTransfer(hammInterface.pool(), balanceCache);
     }
 
     function claim(uint256 _idLPQueue) external nonReentrant {

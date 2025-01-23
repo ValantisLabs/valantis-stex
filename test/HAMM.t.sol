@@ -13,17 +13,19 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {HAMM} from "src/HAMM.sol";
+import {HAMMSwapFeeModule} from "src/HAMMSwapFeeModule.sol";
 import {WithdrawalModule} from "src/WithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
-import {HAMMNativeTokenWrapper} from "src/HAMMNativeTokenWrapper.sol";
-import {FeeParams} from "src/structs/HAMMStructs.sol";
+import {DepositWrapper} from "src/DepositWrapper.sol";
+import {FeeParams} from "src/structs/HAMMSwapFeeModuleStructs.sol";
 
 contract HAMMTest is Test {
     HAMM hamm;
+    HAMMSwapFeeModule swapFeeModule;
     WithdrawalModule withdrawalModule;
 
-    HAMMNativeTokenWrapper nativeWrapper;
+    DepositWrapper nativeWrapper;
 
     ProtocolFactory protocolFactory;
 
@@ -49,8 +51,12 @@ contract HAMMTest is Test {
 
         withdrawalModule = new WithdrawalModule(
             address(overseer),
+            address(this),
             address(this)
         );
+
+        swapFeeModule = new HAMMSwapFeeModule(owner);
+        assertEq(swapFeeModule.owner(), owner);
 
         token0 = new MockStHype();
         weth = new WETH();
@@ -58,6 +64,7 @@ contract HAMMTest is Test {
         hamm = new HAMM(
             address(token0),
             address(weth),
+            address(swapFeeModule),
             address(protocolFactory),
             poolFeeRecipient1,
             poolFeeRecipient2,
@@ -67,10 +74,11 @@ contract HAMMTest is Test {
         withdrawalModule.setHAMM(address(hamm));
         assertEq(withdrawalModule.hamm(), address(hamm));
 
-        nativeWrapper = new HAMMNativeTokenWrapper(
-            address(weth),
-            address(hamm)
-        );
+        vm.startPrank(owner);
+        swapFeeModule.setPool(hamm.pool());
+        vm.stopPrank();
+
+        nativeWrapper = new DepositWrapper(address(weth), address(hamm));
 
         pool = ISovereignPool(hamm.pool());
 
@@ -88,15 +96,23 @@ contract HAMMTest is Test {
     function testDeploy() public {
         WithdrawalModule withdrawalModuleDeployment = new WithdrawalModule(
             address(overseer),
+            address(this),
             address(this)
         );
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.initializer(), address(this));
         assertEq(withdrawalModuleDeployment.hamm(), address(0));
+        assertEq(withdrawalModuleDeployment.owner(), address(this));
+
+        HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(
+            owner
+        );
+        assertEq(swapFeeModuleDeployment.owner(), owner);
 
         HAMM hammDeployment = new HAMM(
             address(token0),
             address(weth),
+            address(swapFeeModuleDeployment),
             address(protocolFactory),
             poolFeeRecipient1,
             poolFeeRecipient2,
@@ -117,8 +133,28 @@ contract HAMMTest is Test {
         assertEq(poolDeployment.token0(), address(token0));
         assertEq(poolDeployment.token1(), address(weth));
         assertEq(poolDeployment.alm(), address(hammDeployment));
-        assertEq(poolDeployment.swapFeeModule(), address(hammDeployment));
+        assertEq(
+            poolDeployment.swapFeeModule(),
+            address(swapFeeModuleDeployment)
+        );
         assertEq(poolDeployment.poolManager(), address(hammDeployment));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                address(this)
+            )
+        );
+        swapFeeModuleDeployment.setPool(address(poolDeployment));
+
+        vm.startPrank(owner);
+        swapFeeModuleDeployment.setPool(hammDeployment.pool());
+        assertEq(swapFeeModuleDeployment.pool(), hammDeployment.pool());
+        vm.expectRevert(
+            HAMMSwapFeeModule.HAMMSwapFeeModule__setPool_alreadySet.selector
+        );
+        swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
+        vm.stopPrank();
     }
 
     function testSetSwapFeeParams() public {
@@ -136,24 +172,34 @@ contract HAMMTest is Test {
                 address(this)
             )
         );
-        hamm.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
+        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
 
         vm.startPrank(owner);
 
-        vm.expectRevert(HAMM.HAMM__setSwapFeeParams_invalidFeeMin.selector);
-        hamm.setSwapFeeParams(reserve1Target, 5_000, feeMaxBips);
-
-        vm.expectRevert(HAMM.HAMM__setSwapFeeParams_invalidFeeMax.selector);
-        hamm.setSwapFeeParams(reserve1Target, feeMinBips, 5_000);
+        vm.expectRevert(
+            HAMMSwapFeeModule
+                .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin
+                .selector
+        );
+        swapFeeModule.setSwapFeeParams(reserve1Target, 5_000, feeMaxBips);
 
         vm.expectRevert(
-            HAMM.HAMM__setSwapFeeParams_inconsistentFeeParams.selector
+            HAMMSwapFeeModule
+                .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax
+                .selector
         );
-        hamm.setSwapFeeParams(reserve1Target, 2, 1);
+        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, 5_000);
 
-        hamm.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
+        vm.expectRevert(
+            HAMMSwapFeeModule
+                .HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams
+                .selector
+        );
+        swapFeeModule.setSwapFeeParams(reserve1Target, 2, 1);
 
-        (uint128 reserveTarget, uint32 feeMin, uint32 feeMax) = hamm
+        swapFeeModule.setSwapFeeParams(reserve1Target, feeMinBips, feeMaxBips);
+
+        (uint128 reserveTarget, uint32 feeMin, uint32 feeMax) = swapFeeModule
             .feeParams();
         assertEq(reserveTarget, reserve1Target);
         assertEq(feeMin, feeMinBips);

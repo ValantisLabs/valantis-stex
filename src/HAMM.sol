@@ -6,6 +6,7 @@ import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol
 import {IProtocolFactory} from "@valantis-core/protocol-factory/interfaces/IProtocolFactory.sol";
 import {SovereignPoolConstructorArgs} from "@valantis-core/pools/structs/SovereignPoolStructs.sol";
 import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
+
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -16,7 +17,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
-import {FeeParams} from "./structs/HAMMStructs.sol";
+import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
 
 contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     using SafeERC20 for ERC20;
@@ -31,14 +32,9 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error HAMM__ZeroAddress();
     error HAMM__deposit_lessThanMinShares();
     error HAMM__deposit_zeroShares();
-    error HAMM__getSwapFeeInBips_InvalidSwapDirection();
-    error HAMM__getSwapFeeInBips_ReserveToken1TargetIsZero();
     error HAMM__onSwapCallback_NotImplemented();
     error HAMM__receive_onlyWETH9();
-    error HAMM__setSwapFeeParams_inconsistentFeeParams();
     error HAMM__setManagerFeeBips_invalidManagerFeeBips();
-    error HAMM__setSwapFeeParams_invalidFeeMin();
-    error HAMM__setSwapFeeParams_invalidFeeMax();
     error HAMM__withdraw_insufficientToken0Withdrawn();
     error HAMM__withdraw_insufficientToken1Withdrawn();
     error HAMM__withdraw_zeroShares();
@@ -59,6 +55,8 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     address public immutable pool;
 
+    address public immutable swapFeeModule;
+
     address public immutable token0;
     address public immutable token1;
 
@@ -69,19 +67,13 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
     /**
      *
-     *  STORAGE
-     *
-     */
-    FeeParams public feeParams;
-
-    /**
-     *
      *  CONSTRUCTOR
      *
      */
     constructor(
         address _token0,
         address _token1,
+        address _swapFeeModule,
         address _protocolFactory,
         address _poolFeeRecipient1,
         address _poolFeeRecipient2,
@@ -89,19 +81,31 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         address _withdrawalModule
     ) Ownable(_owner) ERC20("Hyped AMM LP", "HAMM") {
         if (
-            _token0 == address(0) || _token1 == address(0) || _protocolFactory == address(0)
-                || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0) || _owner == address(0)
-                || _withdrawalModule == address(0)
+            _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
+                || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)
+                || _owner == address(0) || _withdrawalModule == address(0)
         ) revert HAMM__ZeroAddress();
 
         SovereignPoolConstructorArgs memory args = SovereignPoolConstructorArgs(
-            _token0, _token1, _protocolFactory, address(this), address(0), address(0), false, false, 0, 0, 0
+            _token0,
+            _token1,
+            _protocolFactory,
+            address(this),
+            address(0),
+            address(0),
+            true, // token0 and token1 reserves will be measured as pool's balances
+            true, // but token0 and token1 should not be rebase
+            0, // Rounding error tolerance on transfers is 0, since token0 and token1 cannot be rebase
+            0,
+            0
         );
 
         pool = IProtocolFactory(_protocolFactory).deploySovereignPool(args);
 
-        ISovereignPool(pool).setSwapFeeModule(address(this));
+        ISovereignPool(pool).setSwapFeeModule(_swapFeeModule);
         ISovereignPool(pool).setALM(address(this));
+
+        swapFeeModule = _swapFeeModule;
 
         poolFeeRecipient1 = _poolFeeRecipient1;
         poolFeeRecipient2 = _poolFeeRecipient2;
@@ -146,44 +150,11 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @return amountOut Amount of output token received.
      */
     function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
-        SwapFeeModuleData memory swapFeeData = getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
+        SwapFeeModuleData memory swapFeeData =
+            ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
 
         uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
         amountOut = amountInWithoutFee;
-    }
-
-    function getSwapFeeInBips(
-        address _tokenIn,
-        address, /*_tokenOut*/
-        uint256, /*_amountIn*/
-        address, /*_user*/
-        bytes memory /*_swapFeeModuleContext*/
-    ) public view override returns (SwapFeeModuleData memory swapFeeModuleData) {
-        // Fee is only applied on token0 -> token1 swaps
-        if (_tokenIn == token0) {
-            (, uint256 reserve1) = ISovereignPool(pool).getReserves();
-
-            FeeParams memory feeParamsCache = feeParams;
-            uint256 feeInBips;
-            if (reserve1 > feeParamsCache.reserve1Target) {
-                feeInBips = uint256(feeParamsCache.feeMinBips);
-            } else {
-                if (feeParamsCache.reserve1Target == 0) {
-                    revert HAMM__getSwapFeeInBips_ReserveToken1TargetIsZero();
-                }
-
-                feeInBips = uint256(feeParamsCache.feeMaxBips)
-                    - (uint256((feeParamsCache.feeMaxBips - feeParamsCache.feeMinBips)) * reserve1)
-                        / uint256(feeParamsCache.reserve1Target);
-            }
-
-            // Swap fee in `SovereignPool::swap` is applied as:
-            // amountIn * BIPS / (BIPS + swapFeeModuleData.feeInBips),
-            // but our parametrization assumes the form: amountIn * (BIPS - feeInBips) / BIPS
-            // Hence we need to equate both and solve for `swapFeeModuleData.feeInBips`,
-            // with the constraint that feeInBips <= 5_000
-            swapFeeModuleData.feeInBips = (BIPS * BIPS) / (BIPS - feeInBips) - BIPS;
-        }
     }
 
     /**
@@ -196,34 +167,6 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     }
 
     /**
-     * @notice Update AMM's dynamic swap fee parameters.
-     * @dev Only callable by `owner`.
-     * @param _reserve1Target Target token1 reserves.
-     * @param _feeMinBips Lower-bound for the dynamic swap fee.
-     * @param _feeMaxBips Upper-bound for the dynamic swap fee.
-     */
-    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinBips, uint32 _feeMaxBips)
-        external
-        override
-        onlyOwner
-        nonReentrant
-    {
-        // Fees must be lower than 50% (5_000 bips)
-        if (_feeMinBips >= BIPS / 2) {
-            revert HAMM__setSwapFeeParams_invalidFeeMin();
-        }
-        if (_feeMaxBips >= BIPS / 2) {
-            revert HAMM__setSwapFeeParams_invalidFeeMax();
-        }
-
-        if (_feeMinBips > _feeMaxBips) {
-            revert HAMM__setSwapFeeParams_inconsistentFeeParams();
-        }
-
-        feeParams = FeeParams({reserve1Target: _reserve1Target, feeMinBips: _feeMinBips, feeMaxBips: _feeMaxBips});
-    }
-
-    /**
      * @notice Sets a manager/protocol fee on every swap.
      * @dev Only callable by `owner`.
      * @param _poolManagerFeeBips New pool manager fee to apply in `pool`.
@@ -232,23 +175,21 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         ISovereignPool(pool).setPoolManagerFeeBips(_poolManagerFeeBips);
     }
 
-    /**
-     * @notice Allows anyone to claim any accrued pool manager fees to `poolFeeRecipient1` and `poolFeeRecipient2`.
-     */
     function claimPoolManagerFees() external override nonReentrant {
-        // Transfer pool manager fee amounts into this contract
+        // token0 fees are automatically sent to this contract (poolManager) on every swap,
+        // because of SovereignPool::swap behavior for rebase input token
         // No fees are applied on token1 -> token0 swaps
-        (uint256 fee0Claimed,) = ISovereignPool(pool).claimPoolManagerFees(0, 0);
+        uint256 fee0Received = ERC20(token0).balanceOf(address(this));
 
         // 50/50 split between `poolFeeRecipient1` and `poolFeeRecipient2`
 
-        if (fee0Claimed > 0) {
-            uint256 fee0ToRecipient1 = fee0Claimed / 2;
+        if (fee0Received > 0) {
+            uint256 fee0ToRecipient1 = fee0Received / 2;
             if (fee0ToRecipient1 > 0) {
                 ERC20(token0).safeTransfer(poolFeeRecipient1, fee0ToRecipient1);
             }
 
-            uint256 fee0ToRecipient2 = fee0Claimed - fee0ToRecipient1;
+            uint256 fee0ToRecipient2 = fee0Received - fee0ToRecipient1;
             if (fee0ToRecipient2 > 0) {
                 ERC20(token0).safeTransfer(poolFeeRecipient2, fee0ToRecipient2);
             }
@@ -265,15 +206,6 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         (uint256 reserve0,) = poolInterface.getReserves();
         poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
-    }
-
-    /**
-     * @notice Allows the withdrawal module to re-deposit token1 liquidity into `pool`.
-     * @dev Only callable by `withdrawalModule`.
-     * @param _amount Amount of token1 to be re-deposited into `pool`.
-     */
-    function replenishPool(uint256 _amount) external override onlyWithdrawalModule nonReentrant {
-        ISovereignPool(pool).depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
 
     /**
@@ -428,6 +360,8 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
 
         IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
+        // token0 balances might not be 1:1 mapped to token1 balances,
+        // hence we rely on the withdrawalModule to convert it (e.g., if token0 balances represent shares)
         quote.amountOut = _almLiquidityQuoteInput.isZeroToOne
             ? withdrawalModuleInterface.convertToToken1(quote.amountInFilled)
             : withdrawalModuleInterface.convertToToken0(quote.amountInFilled);

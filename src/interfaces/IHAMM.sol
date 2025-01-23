@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 import {ISovereignALM} from "@valantis-core/ALM/interfaces/ISovereignALM.sol";
 import {ISwapFeeModuleMinimal} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 
-interface IHAMM is ISovereignALM, ISwapFeeModuleMinimal {
+interface IHAMM is ISovereignALM {
     function pool() external view returns (address);
 
     function token0() external view returns (address);
@@ -17,15 +17,11 @@ interface IHAMM is ISovereignALM, ISwapFeeModuleMinimal {
 
     function withdrawalModule() external view returns (address);
 
-    function setSwapFeeParams(uint128 _reserve1Target, uint32 _feeMinBips, uint32 _feeMaxBips) external;
-
     function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external;
 
     function claimPoolManagerFees() external;
 
     function unstakeToken0Reserves() external;
-
-    function replenishPool(uint256 _amount) external;
 
     function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
         external

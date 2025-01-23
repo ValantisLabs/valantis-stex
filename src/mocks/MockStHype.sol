@@ -26,16 +26,10 @@ contract MockStHype is ERC20 {
     }
 
     function sharesToAssets(uint256 shares) external view returns (uint256) {
-        return
-            totalSupply() == 0
-                ? 0
-                : (shares * address(this).balance) / totalSupply();
+        return totalSupply() == 0 ? 0 : (shares * address(this).balance) / totalSupply();
     }
 
     function assetsToShares(uint256 assets) public view returns (uint256) {
-        return
-            address(this).balance == 0
-                ? 0
-                : (assets * totalSupply()) / address(this).balance;
+        return address(this).balance == 0 ? 0 : (assets * totalSupply()) / address(this).balance;
     }
 }
