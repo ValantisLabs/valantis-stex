@@ -54,11 +54,11 @@ contract DepositWrapper {
         }
     }
 
-    function depositFromNative(
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external payable returns (uint256 shares) {
+    function depositFromNative(uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        payable
+        returns (uint256 shares)
+    {
         if (_recipient == address(0)) revert DepositWrapper__ZeroAddress();
 
         uint256 amount = msg.value;

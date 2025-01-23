@@ -49,11 +49,7 @@ contract HAMMTest is Test {
         address sovereignPoolFactory = address(new SovereignPoolFactory());
         protocolFactory.setSovereignPoolFactory(sovereignPoolFactory);
 
-        withdrawalModule = new WithdrawalModule(
-            address(overseer),
-            address(this),
-            address(this)
-        );
+        withdrawalModule = new WithdrawalModule(address(overseer), address(this), address(this));
 
         swapFeeModule = new HAMMSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
@@ -94,20 +90,14 @@ contract HAMMTest is Test {
     }
 
     function testDeploy() public {
-        WithdrawalModule withdrawalModuleDeployment = new WithdrawalModule(
-            address(overseer),
-            address(this),
-            address(this)
-        );
+        WithdrawalModule withdrawalModuleDeployment =
+            new WithdrawalModule(address(overseer), address(this), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.initializer(), address(this));
         assertEq(withdrawalModuleDeployment.hamm(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(
-            owner,
-            address(withdrawalModuleDeployment)
-        );
+        HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(owner, address(withdrawalModuleDeployment));
         assertEq(swapFeeModuleDeployment.owner(), owner);
 
         HAMM hammDeployment = new HAMM(
@@ -125,35 +115,22 @@ contract HAMMTest is Test {
         assertEq(hammDeployment.poolFeeRecipient1(), poolFeeRecipient1);
         assertEq(hammDeployment.poolFeeRecipient2(), poolFeeRecipient2);
         assertEq(hammDeployment.owner(), owner);
-        assertEq(
-            hammDeployment.withdrawalModule(),
-            address(withdrawalModuleDeployment)
-        );
+        assertEq(hammDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
         ISovereignPool poolDeployment = ISovereignPool(hammDeployment.pool());
         assertEq(poolDeployment.token0(), address(token0));
         assertEq(poolDeployment.token1(), address(weth));
         assertEq(poolDeployment.alm(), address(hammDeployment));
-        assertEq(
-            poolDeployment.swapFeeModule(),
-            address(swapFeeModuleDeployment)
-        );
+        assertEq(poolDeployment.swapFeeModule(), address(swapFeeModuleDeployment));
         assertEq(poolDeployment.poolManager(), address(hammDeployment));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         swapFeeModuleDeployment.setPool(address(poolDeployment));
 
         vm.startPrank(owner);
         swapFeeModuleDeployment.setPool(hammDeployment.pool());
         assertEq(swapFeeModuleDeployment.pool(), hammDeployment.pool());
-        vm.expectRevert(
-            HAMMSwapFeeModule.HAMMSwapFeeModule__setPool_alreadySet.selector
-        );
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setPool_alreadySet.selector);
         swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
         vm.stopPrank();
     }
@@ -168,70 +145,23 @@ contract HAMMTest is Test {
         uint32 feeMinBips,
         uint32 feeMaxBips
     ) private {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.startPrank(owner);
 
-        vm.expectRevert(
-            HAMMSwapFeeModule
-                .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            5_000,
-            feeMaxBips
-        );
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 5_000, feeMaxBips);
 
-        vm.expectRevert(
-            HAMMSwapFeeModule
-                .HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            5_000
-        );
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, 5_000);
 
-        vm.expectRevert(
-            HAMMSwapFeeModule
-                .HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            2,
-            1
-        );
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 2, 1);
 
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
-        (
-            uint32 minThresholdRatio,
-            uint32 maxThresholdRatio,
-            uint32 feeMin,
-            uint32 feeMax
-        ) = swapFeeModule.feeParams();
+        (uint32 minThresholdRatio, uint32 maxThresholdRatio, uint32 feeMin, uint32 feeMax) = swapFeeModule.feeParams();
         assertEq(minThresholdRatio, minThresholdRatioBips);
         assertEq(maxThresholdRatio, maxThresholdRatioBips);
         assertEq(feeMin, feeMinBips);
@@ -241,12 +171,7 @@ contract HAMMTest is Test {
     }
 
     function testSetPoolManagerFeeBips() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         hamm.setPoolManagerFeeBips(1);
 
         vm.startPrank(owner);
@@ -302,21 +227,13 @@ contract HAMMTest is Test {
         testDeposit();
 
         address recipient = makeAddr("NATIVE_TOKEN_RECIPIENT");
-        uint256 shares = nativeWrapper.depositFromNative(
-            0,
-            block.timestamp,
-            recipient
-        );
+        uint256 shares = nativeWrapper.depositFromNative(0, block.timestamp, recipient);
         // No native token has been sent
         assertEq(shares, 0);
 
         uint256 amount = 2 ether;
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        shares = nativeWrapper.depositFromNative{value: amount}(
-            0,
-            block.timestamp,
-            recipient
-        );
+        shares = nativeWrapper.depositFromNative{value: amount}(0, block.timestamp, recipient);
         assertGt(shares, 0);
         assertEq(weth.allowance(address(nativeWrapper), address(hamm)), 0);
         assertEq(hamm.balanceOf(recipient), shares);
@@ -351,28 +268,16 @@ contract HAMMTest is Test {
         // Test token1 -> token0
         ALMLiquidityQuoteInput memory input;
         input.amountInMinusFee = 123e18;
-        ALMLiquidityQuote memory quote = hamm.getLiquidityQuote(
-            input,
-            new bytes(0),
-            new bytes(0)
-        );
+        ALMLiquidityQuote memory quote = hamm.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
         // tokenOut=token0 balances represents shares of ETH
-        assertEq(
-            quote.amountOut,
-            (input.amountInMinusFee * token0.totalSupply()) /
-                address(token0).balance
-        );
+        assertEq(quote.amountOut, (input.amountInMinusFee * token0.totalSupply()) / address(token0).balance);
 
         // Test token0 -> token1
         input.isZeroToOne = true;
         quote = hamm.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
-        assertEq(
-            quote.amountOut,
-            (input.amountInMinusFee * address(token0).balance) /
-                token0.totalSupply()
-        );
+        assertEq(quote.amountOut, (input.amountInMinusFee * address(token0).balance) / token0.totalSupply());
     }
 
     function testOnSwapCallback() public {
