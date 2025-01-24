@@ -15,7 +15,11 @@ import {IWETH9} from "./interfaces/IWETH9.sol";
 import {IHAMM} from "./interfaces/IHAMM.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
-contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
+contract WithdrawalModule is
+    IWithdrawalModule,
+    ReentrancyGuardTransient,
+    Ownable
+{
     using SafeCast for uint256;
     using SafeERC20 for IWETH9;
 
@@ -38,8 +42,6 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *
      */
     address public immutable overseer;
-
-    address public immutable initializer;
 
     /**
      *
@@ -83,13 +85,12 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  CONSTRUCTOR
      *
      */
-    constructor(address _overseer, address _initializer, address _owner) Ownable(_owner) {
-        if (_overseer == address(0) || _initializer == address(0) || _owner == address(0)) {
+    constructor(address _overseer, address _owner) Ownable(_owner) {
+        if (_overseer == address(0) || _owner == address(0)) {
             revert WithdrawalModule__ZeroAddress();
         }
 
         overseer = _overseer;
-        initializer = _initializer;
     }
 
     /**
@@ -97,12 +98,6 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  MODIFIERS
      *
      */
-    modifier onlyInitializer() {
-        if (msg.sender != initializer) {
-            revert WithdrawalModule__OnlyInitializer();
-        }
-        _;
-    }
 
     modifier onlyHAMM() {
         if (msg.sender != hamm) {
@@ -116,21 +111,33 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  VIEW FUNCTIONS
      *
      */
-    function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
+    function convertToToken0(
+        uint256 _amountToken1
+    ) public view override returns (uint256) {
         address token0 = IHAMM(hamm).token0();
         return IstHYPE(token0).assetsToShares(_amountToken1);
     }
 
-    function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
+    function convertToToken1(
+        uint256 _amountToken0
+    ) public view override returns (uint256) {
         address token0 = IHAMM(hamm).token0();
         return IstHYPE(token0).sharesToAssets(_amountToken0);
     }
 
-    function amountToken0PendingUnstaking() public view override returns (uint256) {
+    function amountToken0PendingUnstaking()
+        public
+        view
+        override
+        returns (uint256)
+    {
         uint256 balanceNative = address(this).balance;
-        uint256 excessNative =
-            balanceNative > amountToken1ClaimableLPWithdrawal ? balanceNative - amountToken1ClaimableLPWithdrawal : 0;
-        uint256 excessToken0 = excessNative > 0 ? convertToToken0(excessNative) : 0;
+        uint256 excessNative = balanceNative > amountToken1ClaimableLPWithdrawal
+            ? balanceNative - amountToken1ClaimableLPWithdrawal
+            : 0;
+        uint256 excessToken0 = excessNative > 0
+            ? convertToToken0(excessNative)
+            : 0;
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
         if (amountToken0PendingUnstakingCache > excessToken0) {
@@ -145,7 +152,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  EXTERNAL FUNCTIONS
      *
      */
-    function setHAMM(address _hamm) external onlyInitializer {
+    function setHAMM(address _hamm) external onlyOwner {
         if (_hamm == address(0)) revert WithdrawalModule__ZeroAddress();
         // Can only be set once
         if (hamm != address(0)) revert WithdrawalModule__setHAMM_AlreadySet();
@@ -159,12 +166,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      */
     receive() external payable nonReentrant {}
 
-    function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
-        external
-        override
-        onlyHAMM
-        nonReentrant
-    {
+    function burnToken0AfterWithdraw(
+        uint256 _amountToken0,
+        address _recipient
+    ) external override onlyHAMM nonReentrant {
         // stHYPE's balances represent shares,
         // so we need to calculate the equivalent amount expected in token1 (equivalently, native token)
         uint256 amountToken1 = convertToToken1(_amountToken0);
@@ -199,7 +204,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         uint256 balanceCache = address(this).balance;
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
-        if (balanceCache == 0 || balanceCache <= amountToken1ClaimableLPWithdrawalCache) {
+        if (
+            balanceCache == 0 ||
+            balanceCache <= amountToken1ClaimableLPWithdrawalCache
+        ) {
             return;
         }
 
@@ -253,8 +261,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
 
         // Check if it is the right time to claim (according to queue priority)
         if (
-            cumulativeAmountToken1ClaimableLPWithdrawal
-                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
+            cumulativeAmountToken1ClaimableLPWithdrawal <
+            request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint +
+                request.amountToken1
         ) {
             revert WithdrawalModule__claim_cannotYetClaim();
         }
