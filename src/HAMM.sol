@@ -81,14 +81,9 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         address _withdrawalModule
     ) Ownable(_owner) ERC20("Hyped AMM LP", "HAMM") {
         if (
-            _token0 == address(0) ||
-            _token1 == address(0) ||
-            _swapFeeModule == address(0) ||
-            _protocolFactory == address(0) ||
-            _poolFeeRecipient1 == address(0) ||
-            _poolFeeRecipient2 == address(0) ||
-            _owner == address(0) ||
-            _withdrawalModule == address(0)
+            _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
+                || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)
+                || _owner == address(0) || _withdrawalModule == address(0)
         ) revert HAMM__ZeroAddress();
 
         SovereignPoolConstructorArgs memory args = SovereignPoolConstructorArgs(
@@ -154,19 +149,11 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _amountIn Amount if `_tokenIn` to swap.
      * @return amountOut Amount of output token received.
      */
-    function getAmountOut(
-        address _tokenIn,
-        uint256 _amountIn
-    ) public view returns (uint256 amountOut) {
-        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(
-            swapFeeModule
-        ).getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
+    function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
+        SwapFeeModuleData memory swapFeeData =
+            ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
 
-        uint256 amountInWithoutFee = Math.mulDiv(
-            _amountIn,
-            BIPS,
-            BIPS + swapFeeData.feeInBips
-        );
+        uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
         amountOut = amountInWithoutFee;
     }
 
@@ -184,9 +171,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @dev Only callable by `owner`.
      * @param _poolManagerFeeBips New pool manager fee to apply in `pool`.
      */
-    function setPoolManagerFeeBips(
-        uint256 _poolManagerFeeBips
-    ) external override onlyOwner nonReentrant {
+    function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external override onlyOwner nonReentrant {
         ISovereignPool(pool).setPoolManagerFeeBips(_poolManagerFeeBips);
     }
 
@@ -216,22 +201,11 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *         and send those to the staking protocol's native withdrawal queue.
      * @dev Only callable by `withdrawalModule`.
      */
-    function unstakeToken0Reserves()
-        external
-        override
-        onlyWithdrawalModule
-        nonReentrant
-    {
+    function unstakeToken0Reserves() external override onlyWithdrawalModule nonReentrant {
         ISovereignPool poolInterface = ISovereignPool(pool);
 
-        (uint256 reserve0, ) = poolInterface.getReserves();
-        poolInterface.withdrawLiquidity(
-            reserve0,
-            0,
-            msg.sender,
-            msg.sender,
-            new bytes(0)
-        );
+        (uint256 reserve0,) = poolInterface.getReserves();
+        poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
     }
 
     /**
@@ -242,12 +216,12 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _recipient Address to mint LP tokens for.
      * @return shares Amount of shares minted.
      */
-    function deposit(
-        uint256 _amount,
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external override nonReentrant returns (uint256 shares) {
+    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        override
+        nonReentrant
+        returns (uint256 shares)
+    {
         _checkDeadline(_deadline);
 
         uint256 totalSupplyCache = totalSupply();
@@ -256,25 +230,17 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
             shares = _amount - MINIMUM_LIQUIDITY;
         } else {
-            (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool)
-                .getReserves();
+            (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
             // Account for token0 in pool (liquid) and pending unstaking (locked)
-            uint256 reserve0Total = reserve0 +
-                IWithdrawalModule(withdrawalModule)
-                    .amountToken0PendingUnstaking();
+            uint256 reserve0Total = reserve0 + IWithdrawalModule(withdrawalModule).amountToken0PendingUnstaking();
             // Account for token1 pending withdrawal to LPs (locked)
-            uint256 reserve1PendingWithdrawal = IWithdrawalModule(
-                withdrawalModule
-            ).amountToken1PendingLPWithdrawal();
+            uint256 reserve1PendingWithdrawal = IWithdrawalModule(withdrawalModule).amountToken1PendingLPWithdrawal();
             // shares calculated in terms of token1
             shares = Math.mulDiv(
                 _amount,
                 totalSupplyCache,
-                reserve1 +
-                    IWithdrawalModule(withdrawalModule).convertToToken1(
-                        reserve0Total
-                    ) -
-                    reserve1PendingWithdrawal
+                reserve1 + IWithdrawalModule(withdrawalModule).convertToToken1(reserve0Total)
+                    - reserve1PendingWithdrawal
             );
         }
 
@@ -284,13 +250,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         _mint(_recipient, shares);
 
-        ISovereignPool(pool).depositLiquidity(
-            0,
-            _amount,
-            msg.sender,
-            new bytes(0),
-            abi.encode(msg.sender)
-        );
+        ISovereignPool(pool).depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
     }
 
     /**
@@ -331,12 +291,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         address _recipient,
         bool _unwrapToNativeToken,
         bool _isInstantWithdrawal
-    )
-        external
-        override
-        nonReentrant
-        returns (uint256 amount0, uint256 amount1)
-    {
+    ) external override nonReentrant returns (uint256 amount0, uint256 amount1) {
         _checkDeadline(_deadline);
 
         if (_shares == 0) revert HAMM__withdraw_zeroShares();
@@ -345,22 +300,16 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             revert HAMM__ZeroAddress();
         }
 
-        (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool)
-            .getReserves();
+        (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
 
         uint256 totalSupplyCache = totalSupply();
         // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = IWithdrawalModule(withdrawalModule)
-            .amountToken1PendingLPWithdrawal();
+        uint256 reserve1PendingWithdrawal = IWithdrawalModule(withdrawalModule).amountToken1PendingLPWithdrawal();
         // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
         // minus LP amount already pending withdrawal
         amount0 = Math.mulDiv(
-            reserve0 +
-                IWithdrawalModule(withdrawalModule)
-                    .amountToken0PendingUnstaking() -
-                IWithdrawalModule(withdrawalModule).convertToToken0(
-                    reserve1PendingWithdrawal
-                ),
+            reserve0 + IWithdrawalModule(withdrawalModule).amountToken0PendingUnstaking()
+                - IWithdrawalModule(withdrawalModule).convertToToken0(reserve1PendingWithdrawal),
             _shares,
             totalSupplyCache
         );
@@ -389,21 +338,14 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         // Send token0 withdrawal request to withdrawal module,
         // to be processed asynchronously
         if (amount0 > 0) {
-            IWithdrawalModule(withdrawalModule).burnToken0AfterWithdraw(
-                amount0,
-                _recipient
-            );
+            IWithdrawalModule(withdrawalModule).burnToken0AfterWithdraw(amount0, _recipient);
         }
 
         // Withdraw token1 amount from pool and send to recipient,
         // also unwrapping into native token if necessary
         if (amount1 > 0) {
             ISovereignPool(pool).withdrawLiquidity(
-                0,
-                amount1,
-                msg.sender,
-                _unwrapToNativeToken ? address(this) : _recipient,
-                new bytes(0)
+                0, amount1, msg.sender, _unwrapToNativeToken ? address(this) : _recipient, new bytes(0)
             );
 
             if (_unwrapToNativeToken) {
@@ -420,7 +362,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     function getLiquidityQuote(
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
-        bytes calldata /*_externalContext*/,
+        bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // The swap happens at 1:1 exchange rate,
@@ -428,9 +370,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         // to the total tokenIn amount
         quote.amountInFilled = _almLiquidityQuoteInput.amountInMinusFee;
 
-        IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(
-            withdrawalModule
-        );
+        IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
         // token0 balances might not be 1:1 mapped to token1 balances,
         // hence we rely on the withdrawalModule to convert it (e.g., if token0 balances represent shares)
         quote.amountOut = _almLiquidityQuoteInput.isZeroToOne
@@ -445,7 +385,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     function onSwapCallback(
         bool,
         /*_isZeroToOne*/
-        uint256 /*_amountIn*/,
+        uint256, /*_amountIn*/
         uint256 /*_amountOut*/
     ) external pure override {
         revert HAMM__onSwapCallback_NotImplemented();
