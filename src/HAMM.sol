@@ -150,11 +150,19 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @return amountOut Amount of output token received.
      */
     function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
+        if (_tokenIn != token0 && _tokenIn != token1) return 0;
+
         SwapFeeModuleData memory swapFeeData =
             ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
 
         uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
-        amountOut = amountInWithoutFee;
+        bool isZeroToOne = _tokenIn == token0;
+        IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
+        // token0 balances might not be 1:1 mapped to token1 balances,
+        // hence we rely on the withdrawalModule to convert it (e.g., if token0 balances represent shares)
+        amountOut = isZeroToOne
+            ? withdrawalModuleInterface.convertToToken1(amountInWithoutFee)
+            : withdrawalModuleInterface.convertToToken0(amountInWithoutFee);
     }
 
     /**
@@ -313,7 +321,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             _shares,
             totalSupplyCache
         );
-        // token1 amount calculated as pro-rata share of token1 reserves in the pool
+        // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
         amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
 
         // This is equivalent to an instant swap into token1, and withdraw the total amount in token1

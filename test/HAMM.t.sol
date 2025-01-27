@@ -5,9 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 
 import {ProtocolFactory} from "@valantis-core/protocol-factory/ProtocolFactory.sol";
+import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 import {SovereignPoolFactory} from "@valantis-core/pools/factories/SovereignPoolFactory.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 import {ALMLiquidityQuoteInput, ALMLiquidityQuote} from "@valantis-core/ALM/structs/SovereignALMStructs.sol";
+import {SovereignPoolSwapParams} from "@valantis-core/pools/structs/SovereignPoolStructs.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
@@ -87,6 +89,9 @@ contract HAMMTest is Test {
         assertEq(token0.totalSupply(), shares);
         assertEq(token0.balanceOf(address(this)), shares);
         assertEq(address(token0).balance, 120 ether);
+
+        token0.approve(address(pool), type(uint256).max);
+        weth.approve(address(pool), type(uint256).max);
     }
 
     function testDeploy() public {
@@ -97,6 +102,7 @@ contract HAMMTest is Test {
 
         HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(owner, address(withdrawalModuleDeployment));
         assertEq(swapFeeModuleDeployment.owner(), owner);
+        assertEq(swapFeeModuleDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
         HAMM hammDeployment = new HAMM(
             address(token0),
@@ -131,6 +137,16 @@ contract HAMMTest is Test {
         vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setPool_alreadySet.selector);
         swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
         vm.stopPrank();
+
+        vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
+        new DepositWrapper(address(0), address(hammDeployment));
+
+        vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
+        new DepositWrapper(address(weth), address(0));
+
+        DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(hammDeployment));
+        assertEq(address(nativeWrapperDeployment.hamm()), address(hammDeployment));
+        assertEq(address(nativeWrapperDeployment.weth()), address(weth));
     }
 
     function testSetSwapFeeParams() public {
@@ -147,6 +163,15 @@ contract HAMMTest is Test {
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.startPrank(owner);
+
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio.selector);
+        swapFeeModule.setSwapFeeParams(10_000, maxThresholdRatioBips, feeMinBips, feeMaxBips);
+
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, 10_000 + 1, feeMinBips, feeMaxBips);
+
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector);
+        swapFeeModule.setSwapFeeParams(maxThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 5_000, feeMaxBips);
@@ -260,6 +285,101 @@ contract HAMMTest is Test {
     function testWithdraw() public {
         address recipient = makeAddr("RECIPIENT");
         _deposit(1e18, recipient);
+
+        uint256 shares = hamm.balanceOf(recipient);
+
+        vm.expectRevert(HAMM.HAMM___checkDeadline_expired.selector);
+        hamm.withdraw(1e18, 0, 0, block.timestamp - 1, recipient, false, false);
+
+        vm.expectRevert(HAMM.HAMM__withdraw_zeroShares.selector);
+        hamm.withdraw(0, 0, 0, block.timestamp, recipient, false, false);
+
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        hamm.withdraw(shares, 0, 0, block.timestamp, address(0), false, false);
+
+        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken0Withdrawn.selector);
+        hamm.withdraw(shares, 1, 0, block.timestamp, recipient, false, false);
+
+        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken1Withdrawn.selector);
+        hamm.withdraw(shares, 0, 1e19, block.timestamp, recipient, false, false);
+
+        vm.startPrank(recipient);
+
+        uint256 snapshot = vm.snapshot();
+
+        // Test regular withdrawal in liquid token1
+        (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
+        hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+        assertEq(hamm.balanceOf(recipient), 0);
+        (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
+        assertEq(preReserve0, postReserve0);
+        assertLt(postReserve1, preReserve1);
+
+        // Test regular withdrawal in liquid native token (unwrapped token1)
+        vm.revertTo(snapshot);
+
+        uint256 preBalance = recipient.balance;
+        hamm.withdraw(shares, 0, 0, block.timestamp, recipient, true, false);
+        assertEq(hamm.balanceOf(recipient), 0);
+        uint256 postBalance = recipient.balance;
+        assertGt(postBalance, preBalance);
+        vm.stopPrank();
+    }
+
+    function testSwap() public {
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _setSwapFeeParams(100, 200, 1, 30);
+
+        _addPoolReserves(0, 30 ether);
+
+        // Test token0 -> token1 swap
+        SovereignPoolSwapParams memory params;
+        params.isZeroToOne = true;
+        params.amountIn = 10 ether;
+        params.deadline = block.timestamp;
+        params.swapTokenOut = address(weth);
+        params.recipient = recipient;
+        uint256 amountOutEstimate = hamm.getAmountOut(address(token0), params.amountIn);
+        (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
+        assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
+        assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
+        assertEq(amountOut, amountOutEstimate);
+        SwapFeeModuleData memory swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
+        // This swap is large enough to push the fee to its maximum value of 30 bips
+        assertEq(swapFeeData.feeInBips, 30);
+        assertEq(weth.balanceOf(recipient), amountOut);
+
+        params.amountIn = 1 ether;
+        // Fees in sovereign pool are applied as amountIn * BIPS / (BIPS + fee),
+        // so we expect some discrepancies
+        uint256 amountOutExpectedApprox = withdrawalModule.convertToToken1((params.amountIn * (10_000 - 30)) / 10_000);
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertEq(amountInUsed, 1 ether);
+        // Discrepancy should not exceed 1 bips
+        assertEq((amountOut * 10_000) / amountOut, (amountOutExpectedApprox * 10_000) / amountOutExpectedApprox);
+
+        // Test token1 -> token0 swap
+        params.isZeroToOne = false;
+        params.swapTokenOut = address(token0);
+
+        // 1:1 exchange rate
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertEq(amountInUsed, 1 ether);
+        assertEq(amountOut, withdrawalModule.convertToToken0(1 ether));
+        // amountOut is in shares
+        assertApproxEqAbs(token0.sharesToAssets(amountOut), 1 ether, 1);
+    }
+
+    function testUnstakeToken0Reserves() public {
+        vm.expectRevert(HAMM.HAMM__OnlyWithdrawalModule.selector);
+        hamm.unstakeToken0Reserves();
+
+        _addPoolReserves(10 ether, 0);
+
+        vm.startPrank(address(withdrawalModule));
+
+        hamm.unstakeToken0Reserves();
     }
 
     function testGetLiquidityQuote() public view {
@@ -281,5 +401,18 @@ contract HAMMTest is Test {
     function testOnSwapCallback() public {
         vm.expectRevert(HAMM.HAMM__onSwapCallback_NotImplemented.selector);
         hamm.onSwapCallback(false, 0, 0);
+    }
+
+    function _addPoolReserves(uint256 amount0, uint256 amount1) private {
+        (, uint256 preReserve1) = pool.getReserves();
+        if (amount0 > 0) {
+            token0.mint{value: amount0}(address(pool));
+        }
+
+        if (amount1 > 0) {
+            weth.transfer(address(pool), amount1);
+            (, uint256 postReserve1) = pool.getReserves();
+            assertEq(postReserve1, preReserve1 + amount1);
+        }
     }
 }
