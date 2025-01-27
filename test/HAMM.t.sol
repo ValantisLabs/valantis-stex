@@ -76,6 +76,12 @@ contract HAMMTest is Test {
         swapFeeModule.setPool(hamm.pool());
         vm.stopPrank();
 
+        vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
+        new DepositWrapper(address(0), address(hamm));
+
+        vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
+        new DepositWrapper(address(weth), address(0));
+
         nativeWrapper = new DepositWrapper(address(weth), address(hamm));
 
         pool = ISovereignPool(hamm.pool());
@@ -103,6 +109,95 @@ contract HAMMTest is Test {
         HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(owner, address(withdrawalModuleDeployment));
         assertEq(swapFeeModuleDeployment.owner(), owner);
         assertEq(swapFeeModuleDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
+
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(0),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(0),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(0),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            address(0),
+            poolFeeRecipient2,
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            address(0),
+            owner,
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            address(0),
+            address(withdrawalModuleDeployment)
+        );
+        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
+        new HAMM(
+            address(token0),
+            address(weth),
+            address(swapFeeModuleDeployment),
+            address(protocolFactory),
+            poolFeeRecipient1,
+            poolFeeRecipient2,
+            owner,
+            address(0)
+        );
 
         HAMM hammDeployment = new HAMM(
             address(token0),
@@ -147,6 +242,16 @@ contract HAMMTest is Test {
         DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(hammDeployment));
         assertEq(address(nativeWrapperDeployment.hamm()), address(hammDeployment));
         assertEq(address(nativeWrapperDeployment.weth()), address(weth));
+    }
+
+    function testReceive() public {
+        vm.expectRevert(HAMM.HAMM__receive_onlyWETH9.selector);
+        address(hamm).call{value: 1 ether}("");
+
+        vm.prank(address(weth));
+        (bool success,) = address(hamm).call{value: 1 ether}("");
+        assertTrue(success);
+        assertEq(address(hamm).balance, 1 ether);
     }
 
     function testSetSwapFeeParams() public {
@@ -305,7 +410,7 @@ contract HAMMTest is Test {
 
         vm.startPrank(recipient);
 
-        uint256 snapshot = vm.snapshot();
+        uint256 snapshot1 = vm.snapshot();
 
         // Test regular withdrawal in liquid token1
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
@@ -316,7 +421,7 @@ contract HAMMTest is Test {
         assertLt(postReserve1, preReserve1);
 
         // Test regular withdrawal in liquid native token (unwrapped token1)
-        vm.revertTo(snapshot);
+        vm.revertTo(snapshot1);
 
         uint256 preBalance = recipient.balance;
         hamm.withdraw(shares, 0, 0, block.timestamp, recipient, true, false);
@@ -327,18 +432,23 @@ contract HAMMTest is Test {
     }
 
     function testSwap() public {
-        address recipient = makeAddr("MOCK_RECIPIENT");
+        address recipient = makeAddr("RECIPIENT");
         _setSwapFeeParams(100, 200, 1, 30);
 
-        _addPoolReserves(0, 30 ether);
-
-        // Test token0 -> token1 swap
+        // Test token0 -> token1 swap (low price impact)
         SovereignPoolSwapParams memory params;
         params.isZeroToOne = true;
-        params.amountIn = 10 ether;
+        params.amountIn = 0.4 ether;
         params.deadline = block.timestamp;
         params.swapTokenOut = address(weth);
         params.recipient = recipient;
+
+        // zero token1 liquidity
+        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
+        hamm.getAmountOut(address(token0), params.amountIn);
+
+        _addPoolReserves(0, 30 ether);
+
         uint256 amountOutEstimate = hamm.getAmountOut(address(token0), params.amountIn);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
@@ -346,9 +456,21 @@ contract HAMMTest is Test {
         assertEq(amountOut, amountOutEstimate);
         SwapFeeModuleData memory swapFeeData =
             swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
+        // fee must be between min and max values
+        assertLt(swapFeeData.feeInBips, 30);
+        assertGt(swapFeeData.feeInBips, 1);
+        assertEq(weth.balanceOf(recipient), amountOut);
+
+        // Test token0 -> token1 swap (large price impact)
+        params.amountIn = 10 ether;
+        amountOutEstimate = hamm.getAmountOut(address(token0), params.amountIn);
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
+        assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
+        assertEq(amountOut, amountOutEstimate);
+        swapFeeData = swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
         // This swap is large enough to push the fee to its maximum value of 30 bips
         assertEq(swapFeeData.feeInBips, 30);
-        assertEq(weth.balanceOf(recipient), amountOut);
 
         params.amountIn = 1 ether;
         // Fees in sovereign pool are applied as amountIn * BIPS / (BIPS + fee),
@@ -369,6 +491,41 @@ contract HAMMTest is Test {
         assertEq(amountOut, withdrawalModule.convertToToken0(1 ether));
         // amountOut is in shares
         assertApproxEqAbs(token0.sharesToAssets(amountOut), 1 ether, 1);
+    }
+
+    function testClaimPoolManagerFees() public {
+        // Set 1% pool manager fee
+        vm.prank(owner);
+        hamm.setPoolManagerFeeBips(100);
+
+        address recipient = makeAddr("RECIPIENT");
+        _setSwapFeeParams(100, 200, 1, 30);
+
+        _addPoolReserves(0, 30 ether);
+
+        assertEq(token0.balanceOf(address(hamm)), 0);
+        assertEq(weth.balanceOf(address(hamm)), 0);
+
+        // Execute token0 -> token1 swap
+        SovereignPoolSwapParams memory params;
+        params.isZeroToOne = true;
+        params.amountIn = 10 ether;
+        params.deadline = block.timestamp;
+        params.swapTokenOut = address(weth);
+        params.recipient = recipient;
+        (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
+        assertEq(amountInUsed, 10 ether);
+        assertEq(weth.balanceOf(recipient), amountOut);
+
+        // Pool manager fee has automatically been transferred to HAMM during the swap
+        assertGt(token0.balanceOf(address(hamm)), 0);
+        assertEq(weth.balanceOf(address(hamm)), 0);
+
+        // Claim pool manager fees
+        hamm.claimPoolManagerFees();
+        assertGt(token0.balanceOf(poolFeeRecipient1), 0);
+        assertGt(token0.balanceOf(poolFeeRecipient2), 0);
+        assertEq(token0.balanceOf(address(hamm)), 0);
     }
 
     function testUnstakeToken0Reserves() public {
