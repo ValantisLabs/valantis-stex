@@ -186,35 +186,35 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     }
 
     function update() external nonReentrant {
-        uint256 balanceCache = address(this).balance;
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
-        if (balanceCache == 0 || balanceCache <= amountToken1ClaimableLPWithdrawalCache) {
+        if (address(this).balance <= amountToken1ClaimableLPWithdrawalCache) {
             return;
         }
 
-        balanceCache -= amountToken1ClaimableLPWithdrawalCache;
+        // Having a surplus balance of native token means that new unstaking requests have been settled
+        uint256 balanceSurplus = address(this).balance - amountToken1ClaimableLPWithdrawalCache;
+        uint256 balanceSurplusToken0 = convertToToken0(balanceSurplus);
 
-        // Having a surplus balance of native token means that new unstaking requests have been processed
-        uint256 excessToken0 = convertToToken0(balanceCache);
-        if (_amountToken0PendingUnstaking > excessToken0) {
-            _amountToken0PendingUnstaking -= excessToken0;
+        uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
+        if (amountToken0PendingUnstakingCache > balanceSurplusToken0) {
+            _amountToken0PendingUnstaking = amountToken0PendingUnstakingCache - balanceSurplusToken0;
         } else {
             _amountToken0PendingUnstaking = 0;
         }
 
         // Prioritize LP withdrawal requests
         uint256 amountToken1PendingLPWithdrawalCache = amountToken1PendingLPWithdrawal;
-        if (balanceCache > amountToken1PendingLPWithdrawalCache) {
-            balanceCache -= amountToken1PendingLPWithdrawalCache;
+        if (balanceSurplus > amountToken1PendingLPWithdrawalCache) {
+            balanceSurplus -= amountToken1PendingLPWithdrawalCache;
             amountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
             cumulativeAmountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
             amountToken1PendingLPWithdrawal = 0;
         } else {
-            amountToken1PendingLPWithdrawal -= balanceCache;
-            amountToken1ClaimableLPWithdrawal += balanceCache;
-            cumulativeAmountToken1ClaimableLPWithdrawal += balanceCache;
-            balanceCache = 0;
+            amountToken1PendingLPWithdrawal -= balanceSurplus;
+            amountToken1ClaimableLPWithdrawal += balanceSurplus;
+            cumulativeAmountToken1ClaimableLPWithdrawal += balanceSurplus;
+            balanceSurplus = 0;
             return;
         }
 
@@ -223,10 +223,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         address token1Address = hammInterface.token1();
         IWETH9 token1 = IWETH9(token1Address);
 
-        token1.deposit{value: balanceCache}();
+        token1.deposit{value: balanceSurplus}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
-        // by transferring directly
-        token1.safeTransfer(hammInterface.pool(), balanceCache);
+        // by transfering directly
+        token1.safeTransfer(hammInterface.pool(), balanceSurplus);
     }
 
     function claim(uint256 _idLPQueue) external nonReentrant {
