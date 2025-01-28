@@ -65,7 +65,7 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
     function getSwapFeeInBips(
         address _tokenIn,
         address, /*_tokenOut*/
-        uint256, /*_amountIn*/
+        uint256 _amountIn,
         address, /*_user*/
         bytes memory /*_swapFeeModuleContext*/
     ) external view override returns (SwapFeeModuleData memory swapFeeModuleData) {
@@ -73,9 +73,13 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
         // Fee is only applied on token0 -> token1 swaps
         if (_tokenIn == poolInterface.token0()) {
             (uint256 reserve0, uint256 reserve1) = poolInterface.getReserves();
-            uint256 amount0PendingUnstaking = IWithdrawalModule(withdrawalModule).amountToken0PendingUnstaking();
+            IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
 
-            uint256 amount0Total = reserve0 + amount0PendingUnstaking;
+            uint256 amount0PendingUnstaking = withdrawalModuleInterface.amountToken0PendingUnstaking();
+            uint256 amountToken0PendingLPWithdrawal =
+                withdrawalModuleInterface.convertToToken0(withdrawalModuleInterface.amountToken1PendingLPWithdrawal());
+
+            uint256 amount0Total = reserve0 + amount0PendingUnstaking + _amountIn - amountToken0PendingLPWithdrawal;
 
             FeeParams memory feeParamsCache = feeParams;
             uint256 feeInBips;

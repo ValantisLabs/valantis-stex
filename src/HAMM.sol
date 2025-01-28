@@ -152,8 +152,9 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
         if (_tokenIn != token0 && _tokenIn != token1) return 0;
 
-        SwapFeeModuleData memory swapFeeData =
-            ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(_tokenIn, address(0), 0, address(0), new bytes(0));
+        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
+            _tokenIn, address(0), _amountIn, address(0), new bytes(0)
+        );
 
         uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
         bool isZeroToOne = _tokenIn == token0;

@@ -453,6 +453,7 @@ contract HAMMTest is Test {
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
+        assertEq(amountInUsed, 0.4 ether);
         assertEq(amountOut, amountOutEstimate);
         SwapFeeModuleData memory swapFeeData =
             swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
