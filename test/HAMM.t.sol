@@ -433,7 +433,7 @@ contract HAMMTest is Test {
 
     function testSwap() public {
         address recipient = makeAddr("RECIPIENT");
-        _setSwapFeeParams(100, 200, 1, 30);
+        _setSwapFeeParams(3000, 5000, 1, 30);
 
         // Test token0 -> token1 swap (low price impact)
         SovereignPoolSwapParams memory params;
@@ -456,11 +456,19 @@ contract HAMMTest is Test {
         assertEq(amountInUsed, 0.4 ether);
         assertEq(amountOut, amountOutEstimate);
         SwapFeeModuleData memory swapFeeData =
-            swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
-        // fee must be between min and max values
-        assertLt(swapFeeData.feeInBips, 30);
-        assertGt(swapFeeData.feeInBips, 1);
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
+        // price impact was low, so fee is still at the minimum
+        assertEq(swapFeeData.feeInBips, 1);
         assertEq(weth.balanceOf(recipient), amountOut);
+
+        // Test token0 -> token1 swap (medium price impact)
+        params.amountIn = 5 ether;
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertEq(amountInUsed, 5 ether);
+        swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
+        assertGt(swapFeeData.feeInBips, 1);
+        assertLt(swapFeeData.feeInBips, 30);
 
         // Test token0 -> token1 swap (large price impact)
         params.amountIn = 10 ether;
