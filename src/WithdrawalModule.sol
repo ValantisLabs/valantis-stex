@@ -37,12 +37,20 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  IMMUTABLES
      *
      */
+
+    /**
+     * @notice Overseer contract from Thunderheads' Liquid Staking Protocol.
+     */
     address public immutable overseer;
 
     /**
      *
      *  STORAGE
      *
+     */
+
+    /**
+     * @notice Address of AMM deployment.
      */
     address public hamm;
 
@@ -135,6 +143,12 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  EXTERNAL FUNCTIONS
      *
      */
+
+    /**
+     * @notice Sets the AMM address.
+     * @dev Callable by `owner` only once.
+     * @param _hamm AMM address to set.
+     */
     function setHAMM(address _hamm) external onlyOwner {
         if (_hamm == address(0)) revert WithdrawalModule__ZeroAddress();
         // Can only be set once
@@ -149,6 +163,13 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      */
     receive() external payable nonReentrant {}
 
+    /**
+     * @notice This function gets called after an LP burns its LP tokens,
+     *         in order to create a pending request
+     * @dev Only callable by the AMM.
+     * @param _amountToken0 Amount of token0 which would be due to `_recipient`.
+     * @param _recipient Address which should receive the amounts from this withdrawal's request once fulfilled.
+     */
     function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
         external
         override
@@ -169,6 +190,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         idLPWithdrawal++;
     }
 
+    /**
+     * @notice Claims pool's accummulated token0 reserves and executes an unstaking request (burn) via `overseer`.
+     * @dev Only callable by `owner`.
+     */
     function unstakeToken0Reserves() external override nonReentrant onlyOwner {
         IHAMM hammInterface = IHAMM(hamm);
         hammInterface.unstakeToken0Reserves();
@@ -185,6 +210,12 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         IOverseer(overseer).burn(address(this), amountToken0);
     }
 
+    /**
+     * @notice Checks current balance of native token and updates state.
+     * @dev Pending LP withdrawals are prioritized,
+     *      and any remaining native token is wrapped and transfered to
+     *      the AMM's Sovereign Pool.
+     */
     function update() external nonReentrant {
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
@@ -192,7 +223,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
             return;
         }
 
-        // Having a surplus balance of native token means that new unstaking requests have been settled
+        // Having a surplus balance of native token means that new unstaking requests have been fulfilled
         uint256 balanceSurplus = address(this).balance - amountToken1ClaimableLPWithdrawalCache;
         uint256 balanceSurplusToken0 = convertToToken0(balanceSurplus);
 
@@ -229,6 +260,11 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         token1.safeTransfer(hammInterface.pool(), balanceSurplus);
     }
 
+    /**
+     * @notice Claims a LP withdrawal request which has already been fulfilled.
+     * @dev Anyone can claim on behalf of its recipient.
+     * @param _idLPQueue Id of LP's withdrawal request to claim.
+     */
     function claim(uint256 _idLPQueue) external nonReentrant {
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
