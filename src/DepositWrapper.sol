@@ -54,6 +54,13 @@ contract DepositWrapper {
         }
     }
 
+    /**
+     * @notice Helper function which wraps native token before depositing.
+     * @param _minShares Minimum amount of LP token required.
+     * @param _deadline Block timestamp after which this call expires.
+     * @param _recipient Address to mint LP tokens for.
+     * @return shares Amount of LP tokens minted during deposit.
+     */
     function depositFromNative(uint256 _minShares, uint256 _deadline, address _recipient)
         external
         payable

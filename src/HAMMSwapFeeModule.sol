@@ -32,12 +32,19 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
      */
     uint256 private constant BIPS = 10_000;
 
+    /**
+     * @notice Address of Withdrawal Module.
+     */
     address public immutable withdrawalModule;
 
     /**
      *
      *  STORAGE
      *
+     */
+
+    /**
+     * @notice Address of Valantis Sovereign Pool.
      */
     address public pool;
 
@@ -54,6 +61,10 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
      *
      *  STORAGE
      *
+     */
+
+    /**
+     * @notice Dynamic swap fee parameters.
      */
     FeeParams public feeParams;
 
@@ -115,6 +126,12 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
      *
      *  EXTERNAL FUNCTIONS
      *
+     */
+
+    /**
+     * @notice Sets address of Valantis Sovereign Pool.
+     * @param _pool Address of Valantis Sovereign Pool to set.
+     * @dev Callable by `owner` only once.
      */
     function setPool(address _pool) external onlyOwner {
         if (_pool == address(0)) revert HAMMSwapFeeModule__ZeroAddress();

@@ -21,6 +21,7 @@ import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
 import {FeeParams} from "src/structs/HAMMSwapFeeModuleStructs.sol";
+import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
 contract HAMMTest is Test {
     HAMM hamm;
@@ -428,6 +429,108 @@ contract HAMMTest is Test {
         assertEq(hamm.balanceOf(recipient), 0);
         uint256 postBalance = recipient.balance;
         assertGt(postBalance, preBalance);
+        vm.stopPrank();
+    }
+
+    function testWithdraw__WithdrawalModule() public {
+        // Tests withdrawal where token0 is sent to unstake via withdrawal module
+        address recipient = makeAddr("RECIPIENT");
+
+        _deposit(10e18, recipient);
+
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+
+        token0.mint{value: 10e18}(address(pool));
+
+        (reserve0, reserve1) = pool.getReserves();
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+        //assertEq(reserve0, withdrawalModule.convertToToken0(10e18));
+
+        uint256 shares = hamm.balanceOf(recipient);
+        assertGt(shares, 0);
+
+        vm.startPrank(recipient);
+
+        (uint256 amount0, uint256 amount1) = hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+        assertEq(hamm.balanceOf(recipient), 0);
+        assertEq(weth.balanceOf(recipient), amount1);
+        assertEq(token0.balanceOf(recipient), 0);
+        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), withdrawalModule.convertToToken1(amount0));
+        assertEq(withdrawalModule.idLPWithdrawal(), 1);
+        (address to, uint96 amountToken1, uint256 cumulativeAmount) = withdrawalModule.LPWithdrawals(0);
+        assertEq(amountToken1, withdrawalModule.convertToToken1(amount0));
+        assertEq(cumulativeAmount, 0);
+        assertEq(to, recipient);
+
+        (reserve0, reserve1) = pool.getReserves();
+
+        vm.stopPrank();
+
+        // Mocks the processing of unstaking token0 by direct transfer of ETH
+        vm.deal(address(withdrawalModule), 20e18);
+        uint256 amountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+
+        // Fulfills pending withdrawals and re-deposits remaining token1 amount into pool
+        withdrawalModule.update();
+        // token1 amount which was previously pending unstaking can now be claimed
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1PendingLPWithdrawal);
+        // No more LP withdrawals pending
+        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
+        assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), amountToken1PendingLPWithdrawal);
+        // Surplus token1 amount was sent to pool
+        {
+            (uint256 reserve0Post, uint256 reserve1Post) = pool.getReserves();
+            assertEq(reserve1Post, reserve1 + 20e18 - amountToken1PendingLPWithdrawal);
+            assertEq(reserve0Post, reserve0);
+        }
+
+        // Claim LP's withdrawal request
+
+        withdrawalModule.claim(0);
+        assertEq(recipient.balance, amountToken1PendingLPWithdrawal);
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0);
+        (to, amountToken1, cumulativeAmount) = withdrawalModule.LPWithdrawals(0);
+        assertEq(to, address(0));
+        assertEq(amountToken1, 0);
+        assertEq(cumulativeAmount, 0);
+
+        vm.expectRevert(WithdrawalModule.WithdrawalModule__claim_alreadyClaimed.selector);
+        withdrawalModule.claim(0);
+    }
+
+    function testWithdraw__InstantWithdrawal() public {
+        address recipient = makeAddr("RECIPIENT");
+
+        _setSwapFeeParams(3000, 5000, 1, 30);
+
+        _deposit(10e18, recipient);
+
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+
+        token0.mint{value: 1e16}(address(pool));
+
+        (reserve0, reserve1) = pool.getReserves();
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+
+        uint256 shares = hamm.balanceOf(recipient) / 2;
+        assertGt(shares, 0);
+
+        vm.startPrank(recipient);
+
+        // Instant withdrawals are entirely in token1, hence amount min of token0 must be 0
+        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken0Withdrawn.selector);
+        (uint256 amount0, uint256 amount1) = hamm.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
+
+        (amount0, amount1) = hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
+        assertEq(amount0, 0);
+        assertGt(amount1, 0);
+        assertEq(weth.balanceOf(recipient), amount1);
+
         vm.stopPrank();
     }
 
