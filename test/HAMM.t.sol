@@ -501,6 +501,39 @@ contract HAMMTest is Test {
         withdrawalModule.claim(0);
     }
 
+    function testWithdraw__InstantWithdrawal() public {
+        address recipient = makeAddr("RECIPIENT");
+
+        _setSwapFeeParams(3000, 5000, 1, 30);
+
+        _deposit(10e18, recipient);
+
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+
+        token0.mint{value: 1e16}(address(pool));
+
+        (reserve0, reserve1) = pool.getReserves();
+        assertEq(reserve1, 10e18 + 1e9 + 1);
+
+        uint256 shares = hamm.balanceOf(recipient) / 2;
+        assertGt(shares, 0);
+
+        vm.startPrank(recipient);
+
+        // Instant withdrawals are entirely in token1, hence amount min of token0 must be 0
+        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken0Withdrawn.selector);
+        (uint256 amount0, uint256 amount1) = hamm.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
+
+        (amount0, amount1) = hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
+        assertEq(amount0, 0);
+        assertGt(amount1, 0);
+        assertEq(weth.balanceOf(recipient), amount1);
+
+        vm.stopPrank();
+    }
+
     function testSwap() public {
         address recipient = makeAddr("RECIPIENT");
         _setSwapFeeParams(3000, 5000, 1, 30);
