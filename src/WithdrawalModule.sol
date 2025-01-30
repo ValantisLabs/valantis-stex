@@ -55,11 +55,6 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     address public hamm;
 
     /**
-     * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
-     */
-    uint256 private _amountToken0PendingUnstaking;
-
-    /**
      * @notice Amount of native `token1` which is owed to HAMM LPs who have burnt their LP tokens.
      */
     uint256 public amountToken1PendingLPWithdrawal;
@@ -83,6 +78,11 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      * @notice mapping from `idLPWithdrawal` to its respective `LPWithdrawalRequest` data.
      */
     mapping(uint256 => LPWithdrawalRequest) public LPWithdrawals;
+
+    /**
+     * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
+     */
+    uint256 private _amountToken0PendingUnstaking;
 
     /**
      *
@@ -124,6 +124,11 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         return IstHYPE(token0).sharesToAssets(_amountToken0);
     }
 
+    /**
+     * @notice Tracks amount of token0 which is pending unstaking through `overseer`.
+     * @dev It is assumed that `overseer` will replenish this contract with native token as
+     *      unstaking requests get fulfilled.
+     */
     function amountToken0PendingUnstaking() public view override returns (uint256) {
         uint256 balanceNative = address(this).balance;
         uint256 excessNative =

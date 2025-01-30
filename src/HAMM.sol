@@ -53,16 +53,35 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *  IMMUTABLES
      *
      */
+
+    /**
+     * @notice Address of Valantis Sovereign Pool.
+     */
     address public immutable pool;
 
+    /**
+     * @notice Address of Valantis Swap Fee Module.
+     */
     address public immutable swapFeeModule;
 
+    /**
+     * @notice Address of LST token.
+     */
     address public immutable token0;
+    /**
+     * @notice Address of wrapped native token.
+     */
     address public immutable token1;
 
+    /**
+     * @notice Address of pool manager fee recipients.
+     */
     address public immutable poolFeeRecipient1;
     address public immutable poolFeeRecipient2;
 
+    /**
+     * @notice Address of Withdrawal Module.
+     */
     address public immutable withdrawalModule;
 
     /**
