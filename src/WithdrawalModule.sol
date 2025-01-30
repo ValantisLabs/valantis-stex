@@ -278,7 +278,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         }
 
         // Check if there is enough ETH available to fulfill this request
-        if (request.amountToken1 < amountToken1ClaimableLPWithdrawal) {
+        if (amountToken1ClaimableLPWithdrawal < request.amountToken1) {
             revert WithdrawalModule__claim_insufficientAmountToClaim();
         }
 
