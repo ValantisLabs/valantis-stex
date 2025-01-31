@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 interface IWithdrawalModule {
     function overseer() external view returns (address);
 
-    function hamm() external view returns (address);
+    function stex() external view returns (address);
 
     function amountToken0PendingUnstaking() external view returns (uint256);
 

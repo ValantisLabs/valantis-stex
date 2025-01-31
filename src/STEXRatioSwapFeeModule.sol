@@ -5,25 +5,28 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
-import {FeeParams} from "./structs/HAMMSwapFeeModuleStructs.sol";
-import {IHAMMSwapFeeModule} from "./interfaces/IHAMMSwapFeeModule.sol";
+import {FeeParams} from "./structs/STEXRatioSwapFeeModuleStructs.sol";
+import {ISTEXRatioSwapFeeModule} from "./interfaces/ISTEXRatioSwapFeeModule.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 
-contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
+/**
+ * @title Stake Exchange: Reserves Ratio based Swap Fee Module.
+ */
+contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
     /**
      *
      *  CUSTOM ERRORS
      *
      */
-    error HAMMSwapFeeModule__ZeroAddress();
-    error HAMMSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
-    error HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams();
-    error HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin();
-    error HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax();
-    error HAMMSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
-    error HAMMSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
-    error HAMMSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
-    error HAMMSwapFeeModule__setPool_alreadySet();
+    error STEXRatioSwapFeeModule__ZeroAddress();
+    error STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
+    error STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
+    error STEXRatioSwapFeeModule__setPool_alreadySet();
 
     /**
      *
@@ -96,7 +99,7 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
             uint256 feeInBips;
 
             if (reserve1 == 0) {
-                revert HAMMSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
+                revert STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
             }
 
             uint256 ratioBips = (amount0Total * BIPS) / reserve1;
@@ -134,9 +137,11 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
      * @dev Callable by `owner` only once.
      */
     function setPool(address _pool) external onlyOwner {
-        if (_pool == address(0)) revert HAMMSwapFeeModule__ZeroAddress();
+        if (_pool == address(0)) revert STEXRatioSwapFeeModule__ZeroAddress();
         // Pool can only be set once
-        if (pool != address(0)) revert HAMMSwapFeeModule__setPool_alreadySet();
+        if (pool != address(0)) {
+            revert STEXRatioSwapFeeModule__setPool_alreadySet();
+        }
         pool = _pool;
     }
 
@@ -156,25 +161,25 @@ contract HAMMSwapFeeModule is IHAMMSwapFeeModule, Ownable {
     ) external override onlyOwner {
         // Reserve ratio threshold params must be in BIPS
         if (_minThresholdRatioBips >= BIPS) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
         }
         if (_maxThresholdRatioBips > BIPS) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
         }
         if (_minThresholdRatioBips >= _maxThresholdRatioBips) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
         }
 
         // Fees must be lower than 50% (5_000 bips)
         if (_feeMinBips >= BIPS / 2) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin();
         }
         if (_feeMaxBips >= BIPS / 2) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax();
         }
 
         if (_feeMinBips > _feeMaxBips) {
-            revert HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams();
+            revert STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams();
         }
 
         feeParams = FeeParams({

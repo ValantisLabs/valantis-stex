@@ -32,7 +32,7 @@ contract DepositWrapperTest is Test {
         new DepositWrapper(address(weth), address(0));
 
         DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(this));
-        assertEq(address(nativeWrapperDeployment.hamm()), address(this));
+        assertEq(address(nativeWrapperDeployment.stex()), address(this));
         assertEq(address(nativeWrapperDeployment.weth()), address(weth));
 
         _token1 = makeAddr("MOCK_TOKEN1");

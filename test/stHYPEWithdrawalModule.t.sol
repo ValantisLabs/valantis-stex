@@ -5,14 +5,14 @@ import {Test} from "forge-std/Test.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {WithdrawalModule} from "src/WithdrawalModule.sol";
+import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
-contract WithdrawalModuleTest is Test {
-    WithdrawalModule withdrawalModule;
+contract stHYPEWithdrawalModuleTest is Test {
+    stHYPEWithdrawalModule withdrawalModule;
 
     WETH weth;
     MockStHype private _token0;
@@ -24,14 +24,14 @@ contract WithdrawalModuleTest is Test {
     function setUp() public {
         overseer = new MockOverseer();
 
-        withdrawalModule = new WithdrawalModule(address(overseer), address(this));
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
 
         _token0 = new MockStHype();
         weth = new WETH();
 
         // AMM will be mocked to make testing more flexible
-        withdrawalModule.setHAMM(address(this));
-        assertEq(withdrawalModule.hamm(), address(this));
+        withdrawalModule.setSTEX(address(this));
+        assertEq(withdrawalModule.stex(), address(this));
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
@@ -62,33 +62,33 @@ contract WithdrawalModuleTest is Test {
 
     function unstakeToken0Reserves() external {}
 
-    function testDeploy() public returns (WithdrawalModule withdrawalModuleDeployment) {
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__ZeroAddress.selector);
-        new WithdrawalModule(address(0), address(this));
+    function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
+        new stHYPEWithdrawalModule(address(0), address(this));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new WithdrawalModule(address(overseer), address(0));
+        new stHYPEWithdrawalModule(address(overseer), address(0));
 
-        withdrawalModuleDeployment = new WithdrawalModule(address(overseer), address(this));
+        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
     }
 
     function testSetHAMM() public {
-        WithdrawalModule withdrawalModuleDeployment = testDeploy();
+        stHYPEWithdrawalModule withdrawalModuleDeployment = testDeploy();
 
         vm.prank(_pool);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _pool));
-        withdrawalModuleDeployment.setHAMM(address(this));
+        withdrawalModuleDeployment.setSTEX(address(this));
 
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__ZeroAddress.selector);
-        withdrawalModuleDeployment.setHAMM(address(0));
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
+        withdrawalModuleDeployment.setSTEX(address(0));
 
-        withdrawalModuleDeployment.setHAMM(address(this));
-        assertEq(withdrawalModuleDeployment.hamm(), address(this));
+        withdrawalModuleDeployment.setSTEX(address(this));
+        assertEq(withdrawalModuleDeployment.stex(), address(this));
 
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__setHAMM_AlreadySet.selector);
-        withdrawalModuleDeployment.setHAMM(_pool);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__setSTEX_AlreadySet.selector);
+        withdrawalModuleDeployment.setSTEX(_pool);
     }
 
     function testReceive() public {
@@ -103,7 +103,7 @@ contract WithdrawalModuleTest is Test {
         address recipient = makeAddr("MOCK_RECIPIENT");
 
         vm.prank(_pool);
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__OnlyHAMM.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector);
         withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
 
         withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
@@ -172,7 +172,7 @@ contract WithdrawalModuleTest is Test {
         assertEq(weth.balanceOf(_pool), 0);
 
         // Cannot claim withdrawal request because there is not enough ETH available
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__claim_insufficientAmountToClaim.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_insufficientAmountToClaim.selector);
         withdrawalModule.claim(0);
 
         vm.revertTo(snapshot);

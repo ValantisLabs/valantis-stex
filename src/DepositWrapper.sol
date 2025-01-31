@@ -5,7 +5,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IWETH9} from "./interfaces/IWETH9.sol";
-import {IHAMM} from "./interfaces/IHAMM.sol";
+import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 
 contract DepositWrapper {
     using SafeERC20 for IWETH9;
@@ -24,7 +24,7 @@ contract DepositWrapper {
      *  IMMUTABLES
      *
      */
-    IHAMM public immutable hamm;
+    ISTEXAMM public immutable stex;
     IWETH9 public immutable weth;
 
     /**
@@ -32,13 +32,13 @@ contract DepositWrapper {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _weth, address _hamm) {
-        if (_weth == address(0) || _hamm == address(0)) {
+    constructor(address _weth, address _stex) {
+        if (_weth == address(0) || _stex == address(0)) {
             revert DepositWrapper__ZeroAddress();
         }
-        hamm = IHAMM(_hamm);
+        stex = ISTEXAMM(_stex);
         weth = IWETH9(_weth);
-        if (hamm.token1() != _weth) {
+        if (stex.token1() != _weth) {
             revert DepositWrapper__constructor_invalidToken1();
         }
     }
@@ -71,9 +71,9 @@ contract DepositWrapper {
         uint256 amount = msg.value;
         if (amount == 0) return 0;
 
-        _wrapAndApprove(amount, address(hamm));
+        _wrapAndApprove(amount, address(stex));
 
-        shares = hamm.deposit(amount, _minShares, _deadline, _recipient);
+        shares = stex.deposit(amount, _minShares, _deadline, _recipient);
     }
 
     /**

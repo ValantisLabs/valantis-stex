@@ -2,7 +2,6 @@
 pragma solidity ^0.8.25;
 
 import {Test} from "forge-std/Test.sol";
-import "forge-std/console.sol";
 
 import {ProtocolFactory} from "@valantis-core/protocol-factory/ProtocolFactory.sol";
 import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
@@ -14,19 +13,19 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
-import {HAMM} from "src/HAMM.sol";
-import {HAMMSwapFeeModule} from "src/HAMMSwapFeeModule.sol";
-import {WithdrawalModule} from "src/WithdrawalModule.sol";
+import {STEXAMM} from "src/STEXAMM.sol";
+import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
+import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
-import {FeeParams} from "src/structs/HAMMSwapFeeModuleStructs.sol";
+import {FeeParams} from "src/structs/STEXRatioSwapFeeModuleStructs.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
-contract HAMMTest is Test {
-    HAMM hamm;
-    HAMMSwapFeeModule swapFeeModule;
-    WithdrawalModule withdrawalModule;
+contract STEXAMMTest is Test {
+    STEXAMM stex;
+    STEXRatioSwapFeeModule swapFeeModule;
+    stHYPEWithdrawalModule withdrawalModule;
 
     DepositWrapper nativeWrapper;
 
@@ -52,15 +51,15 @@ contract HAMMTest is Test {
         address sovereignPoolFactory = address(new SovereignPoolFactory());
         protocolFactory.setSovereignPoolFactory(sovereignPoolFactory);
 
-        withdrawalModule = new WithdrawalModule(address(overseer), address(this));
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
 
-        swapFeeModule = new HAMMSwapFeeModule(owner, address(withdrawalModule));
+        swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
 
         token0 = new MockStHype();
         weth = new WETH();
 
-        hamm = new HAMM(
+        stex = new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -72,22 +71,22 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModule)
         );
-        withdrawalModule.setHAMM(address(hamm));
-        assertEq(withdrawalModule.hamm(), address(hamm));
+        withdrawalModule.setSTEX(address(stex));
+        assertEq(withdrawalModule.stex(), address(stex));
 
         vm.startPrank(owner);
-        swapFeeModule.setPool(hamm.pool());
+        swapFeeModule.setPool(stex.pool());
         vm.stopPrank();
 
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
-        new DepositWrapper(address(0), address(hamm));
+        new DepositWrapper(address(0), address(stex));
 
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
         new DepositWrapper(address(weth), address(0));
 
-        nativeWrapper = new DepositWrapper(address(weth), address(hamm));
+        nativeWrapper = new DepositWrapper(address(weth), address(stex));
 
-        pool = ISovereignPool(hamm.pool());
+        pool = ISovereignPool(stex.pool());
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
@@ -104,17 +103,18 @@ contract HAMMTest is Test {
     }
 
     function testDeploy() public {
-        WithdrawalModule withdrawalModuleDeployment = new WithdrawalModule(address(overseer), address(this));
+        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
-        assertEq(withdrawalModuleDeployment.hamm(), address(0));
+        assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        HAMMSwapFeeModule swapFeeModuleDeployment = new HAMMSwapFeeModule(owner, address(withdrawalModuleDeployment));
+        STEXRatioSwapFeeModule swapFeeModuleDeployment =
+            new STEXRatioSwapFeeModule(owner, address(withdrawalModuleDeployment));
         assertEq(swapFeeModuleDeployment.owner(), owner);
         assertEq(swapFeeModuleDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(0),
@@ -126,8 +126,8 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -139,8 +139,8 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -152,8 +152,8 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -165,8 +165,8 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -178,8 +178,8 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -192,7 +192,7 @@ contract HAMMTest is Test {
             address(withdrawalModuleDeployment)
         );
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new HAMM(
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -204,8 +204,8 @@ contract HAMMTest is Test {
             address(0),
             address(withdrawalModuleDeployment)
         );
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        new HAMM(
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -218,7 +218,7 @@ contract HAMMTest is Test {
             address(0)
         );
 
-        HAMM hammDeployment = new HAMM(
+        STEXAMM stexDeployment = new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
             address(token0),
@@ -230,49 +230,49 @@ contract HAMMTest is Test {
             owner,
             address(withdrawalModuleDeployment)
         );
-        assertEq(hammDeployment.token0(), address(token0));
-        assertEq(hammDeployment.token1(), address(weth));
-        assertEq(hammDeployment.poolFeeRecipient1(), poolFeeRecipient1);
-        assertEq(hammDeployment.poolFeeRecipient2(), poolFeeRecipient2);
-        assertEq(hammDeployment.owner(), owner);
-        assertEq(hammDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
+        assertEq(stexDeployment.token0(), address(token0));
+        assertEq(stexDeployment.token1(), address(weth));
+        assertEq(stexDeployment.poolFeeRecipient1(), poolFeeRecipient1);
+        assertEq(stexDeployment.poolFeeRecipient2(), poolFeeRecipient2);
+        assertEq(stexDeployment.owner(), owner);
+        assertEq(stexDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
-        ISovereignPool poolDeployment = ISovereignPool(hammDeployment.pool());
+        ISovereignPool poolDeployment = ISovereignPool(stexDeployment.pool());
         assertEq(poolDeployment.token0(), address(token0));
         assertEq(poolDeployment.token1(), address(weth));
-        assertEq(poolDeployment.alm(), address(hammDeployment));
+        assertEq(poolDeployment.alm(), address(stexDeployment));
         assertEq(poolDeployment.swapFeeModule(), address(swapFeeModuleDeployment));
-        assertEq(poolDeployment.poolManager(), address(hammDeployment));
+        assertEq(poolDeployment.poolManager(), address(stexDeployment));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         swapFeeModuleDeployment.setPool(address(poolDeployment));
 
         vm.startPrank(owner);
-        swapFeeModuleDeployment.setPool(hammDeployment.pool());
-        assertEq(swapFeeModuleDeployment.pool(), hammDeployment.pool());
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setPool_alreadySet.selector);
+        swapFeeModuleDeployment.setPool(stexDeployment.pool());
+        assertEq(swapFeeModuleDeployment.pool(), stexDeployment.pool());
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setPool_alreadySet.selector);
         swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
         vm.stopPrank();
 
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
-        new DepositWrapper(address(0), address(hammDeployment));
+        new DepositWrapper(address(0), address(stexDeployment));
 
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
         new DepositWrapper(address(weth), address(0));
 
-        DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(hammDeployment));
-        assertEq(address(nativeWrapperDeployment.hamm()), address(hammDeployment));
+        DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(stexDeployment));
+        assertEq(address(nativeWrapperDeployment.stex()), address(stexDeployment));
         assertEq(address(nativeWrapperDeployment.weth()), address(weth));
     }
 
     function testReceive() public {
-        vm.expectRevert(HAMM.HAMM__receive_onlyWETH9.selector);
-        address(hamm).call{value: 1 ether}("");
+        vm.expectRevert(STEXAMM.STEXAMM__receive_onlyWETH9.selector);
+        address(stex).call{value: 1 ether}("");
 
         vm.prank(address(weth));
-        (bool success,) = address(hamm).call{value: 1 ether}("");
+        (bool success,) = address(stex).call{value: 1 ether}("");
         assertTrue(success);
-        assertEq(address(hamm).balance, 1 ether);
+        assertEq(address(stex).balance, 1 ether);
     }
 
     function testSetSwapFeeParams() public {
@@ -290,22 +290,28 @@ contract HAMMTest is Test {
 
         vm.startPrank(owner);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio.selector);
+        vm.expectRevert(
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio.selector
+        );
         swapFeeModule.setSwapFeeParams(10_000, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio.selector);
+        vm.expectRevert(
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio.selector
+        );
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, 10_000 + 1, feeMinBips, feeMaxBips);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector);
+        vm.expectRevert(
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector
+        );
         swapFeeModule.setSwapFeeParams(maxThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 5_000, feeMaxBips);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_invalidFeeMax.selector);
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax.selector);
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, 5_000);
 
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__setSwapFeeParams_inconsistentFeeParams.selector);
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams.selector);
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 2, 1);
 
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
@@ -321,11 +327,11 @@ contract HAMMTest is Test {
 
     function testSetPoolManagerFeeBips() public {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        hamm.setPoolManagerFeeBips(1);
+        stex.setPoolManagerFeeBips(1);
 
         vm.startPrank(owner);
 
-        hamm.setPoolManagerFeeBips(1);
+        stex.setPoolManagerFeeBips(1);
         assertEq(pool.poolManagerFeeBips(), 1);
 
         vm.stopPrank();
@@ -338,35 +344,35 @@ contract HAMMTest is Test {
     }
 
     function _deposit(uint256 amount, address recipient) private {
-        vm.expectRevert(HAMM.HAMM___checkDeadline_expired.selector);
-        hamm.deposit(1e18, 0, block.timestamp - 1, recipient);
+        vm.expectRevert(STEXAMM.STEXAMM___checkDeadline_expired.selector);
+        stex.deposit(1e18, 0, block.timestamp - 1, recipient);
 
         // Test first deposit
 
         vm.expectRevert();
-        hamm.deposit(1e9 - 1, 0, block.timestamp, recipient);
+        stex.deposit(1e9 - 1, 0, block.timestamp, recipient);
 
-        vm.expectRevert(HAMM.HAMM__deposit_lessThanMinShares.selector);
-        hamm.deposit(1e10, 1e10, block.timestamp, recipient);
+        vm.expectRevert(STEXAMM.STEXAMM__deposit_lessThanMinShares.selector);
+        stex.deposit(1e10, 1e10, block.timestamp, recipient);
 
-        vm.expectRevert(HAMM.HAMM__deposit_zeroShares.selector);
-        hamm.deposit(1e9, 0, block.timestamp, recipient);
+        vm.expectRevert(STEXAMM.STEXAMM__deposit_zeroShares.selector);
+        stex.deposit(1e9, 0, block.timestamp, recipient);
 
-        weth.approve(address(hamm), type(uint256).max);
+        weth.approve(address(stex), type(uint256).max);
 
-        uint256 shares = hamm.deposit(1e9 + 1, 1, block.timestamp, recipient);
+        uint256 shares = stex.deposit(1e9 + 1, 1, block.timestamp, recipient);
         assertEq(shares, 1);
-        assertEq(hamm.balanceOf(address(1)), 1e9);
-        assertEq(hamm.balanceOf(recipient), 1);
+        assertEq(stex.balanceOf(address(1)), 1e9);
+        assertEq(stex.balanceOf(recipient), 1);
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
         assertEq(reserve1, 1e9 + 1);
 
         // Test normal deposit
 
-        shares = hamm.deposit(amount, 0, block.timestamp, recipient);
-        assertEq(hamm.balanceOf(address(1)), 1e9);
-        assertEq(hamm.balanceOf(recipient), shares + 1);
+        shares = stex.deposit(amount, 0, block.timestamp, recipient);
+        assertEq(stex.balanceOf(address(1)), 1e9);
+        assertEq(stex.balanceOf(recipient), shares + 1);
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
         assertEq(reserve1, amount + 1e9 + 1);
@@ -384,24 +390,24 @@ contract HAMMTest is Test {
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
         shares = nativeWrapper.depositFromNative{value: amount}(0, block.timestamp, recipient);
         assertGt(shares, 0);
-        assertEq(weth.allowance(address(nativeWrapper), address(hamm)), 0);
-        assertEq(hamm.balanceOf(recipient), shares);
+        assertEq(weth.allowance(address(nativeWrapper), address(stex)), 0);
+        assertEq(stex.balanceOf(recipient), shares);
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
         assertEq(preReserve1 + amount, postReserve1);
     }
 
     function testOnDepositLiquidityCallback() public {
-        vm.expectRevert(HAMM.HAMM__OnlyPool.selector);
-        hamm.onDepositLiquidityCallback(0, 0, new bytes(0));
+        vm.expectRevert(STEXAMM.STEXAMM__OnlyPool.selector);
+        stex.onDepositLiquidityCallback(0, 0, new bytes(0));
 
         uint256 amount1 = 1e18;
         bytes memory data = abi.encode(address(this));
-        weth.approve(address(hamm), amount1);
+        weth.approve(address(stex), amount1);
 
         vm.startPrank(address(pool));
 
-        hamm.onDepositLiquidityCallback(0, amount1, data);
+        stex.onDepositLiquidityCallback(0, amount1, data);
 
         assertEq(weth.balanceOf(address(pool)), amount1);
 
@@ -412,22 +418,22 @@ contract HAMMTest is Test {
         address recipient = makeAddr("RECIPIENT");
         _deposit(1e18, recipient);
 
-        uint256 shares = hamm.balanceOf(recipient);
+        uint256 shares = stex.balanceOf(recipient);
 
-        vm.expectRevert(HAMM.HAMM___checkDeadline_expired.selector);
-        hamm.withdraw(1e18, 0, 0, block.timestamp - 1, recipient, false, false);
+        vm.expectRevert(STEXAMM.STEXAMM___checkDeadline_expired.selector);
+        stex.withdraw(1e18, 0, 0, block.timestamp - 1, recipient, false, false);
 
-        vm.expectRevert(HAMM.HAMM__withdraw_zeroShares.selector);
-        hamm.withdraw(0, 0, 0, block.timestamp, recipient, false, false);
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_zeroShares.selector);
+        stex.withdraw(0, 0, 0, block.timestamp, recipient, false, false);
 
-        vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
-        hamm.withdraw(shares, 0, 0, block.timestamp, address(0), false, false);
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        stex.withdraw(shares, 0, 0, block.timestamp, address(0), false, false);
 
-        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken0Withdrawn.selector);
-        hamm.withdraw(shares, 1, 0, block.timestamp, recipient, false, false);
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
+        stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, false);
 
-        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken1Withdrawn.selector);
-        hamm.withdraw(shares, 0, 1e19, block.timestamp, recipient, false, false);
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken1Withdrawn.selector);
+        stex.withdraw(shares, 0, 1e19, block.timestamp, recipient, false, false);
 
         vm.startPrank(recipient);
 
@@ -435,8 +441,8 @@ contract HAMMTest is Test {
 
         // Test regular withdrawal in liquid token1
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
-        assertEq(hamm.balanceOf(recipient), 0);
+        stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+        assertEq(stex.balanceOf(recipient), 0);
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
         assertLt(postReserve1, preReserve1);
@@ -445,8 +451,8 @@ contract HAMMTest is Test {
         vm.revertTo(snapshot1);
 
         uint256 preBalance = recipient.balance;
-        hamm.withdraw(shares, 0, 0, block.timestamp, recipient, true, false);
-        assertEq(hamm.balanceOf(recipient), 0);
+        stex.withdraw(shares, 0, 0, block.timestamp, recipient, true, false);
+        assertEq(stex.balanceOf(recipient), 0);
         uint256 postBalance = recipient.balance;
         assertGt(postBalance, preBalance);
         vm.stopPrank();
@@ -468,13 +474,13 @@ contract HAMMTest is Test {
         assertEq(reserve1, 10e18 + 1e9 + 1);
         //assertEq(reserve0, withdrawalModule.convertToToken0(10e18));
 
-        uint256 shares = hamm.balanceOf(recipient);
+        uint256 shares = stex.balanceOf(recipient);
         assertGt(shares, 0);
 
         vm.startPrank(recipient);
 
-        (uint256 amount0, uint256 amount1) = hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
-        assertEq(hamm.balanceOf(recipient), 0);
+        (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+        assertEq(stex.balanceOf(recipient), 0);
         assertEq(weth.balanceOf(recipient), amount1);
         assertEq(token0.balanceOf(recipient), 0);
         assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), withdrawalModule.convertToToken1(amount0));
@@ -517,7 +523,7 @@ contract HAMMTest is Test {
         assertEq(amountToken1, 0);
         assertEq(cumulativeAmount, 0);
 
-        vm.expectRevert(WithdrawalModule.WithdrawalModule__claim_alreadyClaimed.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
         withdrawalModule.claim(0);
     }
 
@@ -537,16 +543,16 @@ contract HAMMTest is Test {
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve1, 10e18 + 1e9 + 1);
 
-        uint256 shares = hamm.balanceOf(recipient) / 2;
+        uint256 shares = stex.balanceOf(recipient) / 2;
         assertGt(shares, 0);
 
         vm.startPrank(recipient);
 
         // Instant withdrawals are entirely in token1, hence amount min of token0 must be 0
-        vm.expectRevert(HAMM.HAMM__withdraw_insufficientToken0Withdrawn.selector);
-        (uint256 amount0, uint256 amount1) = hamm.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
+        (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
 
-        (amount0, amount1) = hamm.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
+        (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
         assertEq(amount0, 0);
         assertGt(amount1, 0);
         assertEq(weth.balanceOf(recipient), amount1);
@@ -567,12 +573,12 @@ contract HAMMTest is Test {
         params.recipient = recipient;
 
         // zero token1 liquidity
-        vm.expectRevert(HAMMSwapFeeModule.HAMMSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
-        hamm.getAmountOut(address(token0), params.amountIn);
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
+        stex.getAmountOut(address(token0), params.amountIn);
 
         _addPoolReserves(0, 30 ether);
 
-        uint256 amountOutEstimate = hamm.getAmountOut(address(token0), params.amountIn);
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
@@ -595,7 +601,7 @@ contract HAMMTest is Test {
 
         // Test token0 -> token1 swap (large price impact)
         params.amountIn = 10 ether;
-        amountOutEstimate = hamm.getAmountOut(address(token0), params.amountIn);
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
         (amountInUsed, amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
@@ -628,15 +634,15 @@ contract HAMMTest is Test {
     function testClaimPoolManagerFees() public {
         // Set 1% pool manager fee
         vm.prank(owner);
-        hamm.setPoolManagerFeeBips(100);
+        stex.setPoolManagerFeeBips(100);
 
         address recipient = makeAddr("RECIPIENT");
         _setSwapFeeParams(100, 200, 1, 30);
 
         _addPoolReserves(0, 30 ether);
 
-        assertEq(token0.balanceOf(address(hamm)), 0);
-        assertEq(weth.balanceOf(address(hamm)), 0);
+        assertEq(token0.balanceOf(address(stex)), 0);
+        assertEq(weth.balanceOf(address(stex)), 0);
 
         // Execute token0 -> token1 swap
         SovereignPoolSwapParams memory params;
@@ -650,46 +656,46 @@ contract HAMMTest is Test {
         assertEq(weth.balanceOf(recipient), amountOut);
 
         // Pool manager fee has automatically been transferred to HAMM during the swap
-        assertGt(token0.balanceOf(address(hamm)), 0);
-        assertEq(weth.balanceOf(address(hamm)), 0);
+        assertGt(token0.balanceOf(address(stex)), 0);
+        assertEq(weth.balanceOf(address(stex)), 0);
 
         // Claim pool manager fees
-        hamm.claimPoolManagerFees();
+        stex.claimPoolManagerFees();
         assertGt(token0.balanceOf(poolFeeRecipient1), 0);
         assertGt(token0.balanceOf(poolFeeRecipient2), 0);
-        assertEq(token0.balanceOf(address(hamm)), 0);
+        assertEq(token0.balanceOf(address(stex)), 0);
     }
 
     function testUnstakeToken0Reserves() public {
-        vm.expectRevert(HAMM.HAMM__OnlyWithdrawalModule.selector);
-        hamm.unstakeToken0Reserves();
+        vm.expectRevert(STEXAMM.STEXAMM__OnlyWithdrawalModule.selector);
+        stex.unstakeToken0Reserves();
 
         _addPoolReserves(10 ether, 0);
 
         vm.startPrank(address(withdrawalModule));
 
-        hamm.unstakeToken0Reserves();
+        stex.unstakeToken0Reserves();
     }
 
     function testGetLiquidityQuote() public view {
         // Test token1 -> token0
         ALMLiquidityQuoteInput memory input;
         input.amountInMinusFee = 123e18;
-        ALMLiquidityQuote memory quote = hamm.getLiquidityQuote(input, new bytes(0), new bytes(0));
+        ALMLiquidityQuote memory quote = stex.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
         // tokenOut=token0 balances represents shares of ETH
         assertEq(quote.amountOut, (input.amountInMinusFee * token0.totalSupply()) / address(token0).balance);
 
         // Test token0 -> token1
         input.isZeroToOne = true;
-        quote = hamm.getLiquidityQuote(input, new bytes(0), new bytes(0));
+        quote = stex.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
         assertEq(quote.amountOut, (input.amountInMinusFee * address(token0).balance) / token0.totalSupply());
     }
 
     function testOnSwapCallback() public {
-        vm.expectRevert(HAMM.HAMM__onSwapCallback_NotImplemented.selector);
-        hamm.onSwapCallback(false, 0, 0);
+        vm.expectRevert(STEXAMM.STEXAMM__onSwapCallback_NotImplemented.selector);
+        stex.onSwapCallback(false, 0, 0);
     }
 
     function _addPoolReserves(uint256 amount0, uint256 amount1) private {

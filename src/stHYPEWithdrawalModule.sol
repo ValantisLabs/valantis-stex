@@ -12,10 +12,13 @@ import {IOverseer} from "./interfaces/IOverseer.sol";
 import {IstHYPE} from "./interfaces/IstHYPE.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
-import {IHAMM} from "./interfaces/IHAMM.sol";
+import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
-contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
+/**
+ * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype.
+ */
+contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
     using SafeCast for uint256;
     using SafeERC20 for IWETH9;
 
@@ -24,13 +27,13 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  CUSTOM ERRORS
      *
      */
-    error WithdrawalModule__ZeroAddress();
-    error WithdrawalModule__OnlyInitializer();
-    error WithdrawalModule__OnlyHAMM();
-    error WithdrawalModule__claim_alreadyClaimed();
-    error WithdrawalModule__claim_cannotYetClaim();
-    error WithdrawalModule__claim_insufficientAmountToClaim();
-    error WithdrawalModule__setHAMM_AlreadySet();
+    error stHYPEWithdrawalModule__ZeroAddress();
+    error stHYPEWithdrawalModule__OnlyInitializer();
+    error stHYPEWithdrawalModule__OnlySTEX();
+    error stHYPEWithdrawalModule__claim_alreadyClaimed();
+    error stHYPEWithdrawalModule__claim_cannotYetClaim();
+    error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
+    error stHYPEWithdrawalModule__setSTEX_AlreadySet();
 
     /**
      *
@@ -50,9 +53,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      */
 
     /**
-     * @notice Address of AMM deployment.
+     * @notice Address of Stake Exchange AMM deployment.
      */
-    address public hamm;
+    address public stex;
 
     /**
      * @notice Amount of native `token1` which is owed to HAMM LPs who have burnt their LP tokens.
@@ -91,7 +94,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      */
     constructor(address _overseer, address _owner) Ownable(_owner) {
         if (_overseer == address(0) || _owner == address(0)) {
-            revert WithdrawalModule__ZeroAddress();
+            revert stHYPEWithdrawalModule__ZeroAddress();
         }
 
         overseer = _overseer;
@@ -102,9 +105,9 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *  MODIFIERS
      *
      */
-    modifier onlyHAMM() {
-        if (msg.sender != hamm) {
-            revert WithdrawalModule__OnlyHAMM();
+    modifier onlySTEX() {
+        if (msg.sender != stex) {
+            revert stHYPEWithdrawalModule__OnlySTEX();
         }
         _;
     }
@@ -115,12 +118,12 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      *
      */
     function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
-        address token0 = IHAMM(hamm).token0();
+        address token0 = ISTEXAMM(stex).token0();
         return IstHYPE(token0).assetsToShares(_amountToken1);
     }
 
     function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
-        address token0 = IHAMM(hamm).token0();
+        address token0 = ISTEXAMM(stex).token0();
         return IstHYPE(token0).sharesToAssets(_amountToken0);
     }
 
@@ -152,14 +155,16 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     /**
      * @notice Sets the AMM address.
      * @dev Callable by `owner` only once.
-     * @param _hamm AMM address to set.
+     * @param _stex Stake Exchange AMM address to set.
      */
-    function setHAMM(address _hamm) external onlyOwner {
-        if (_hamm == address(0)) revert WithdrawalModule__ZeroAddress();
+    function setSTEX(address _stex) external onlyOwner {
+        if (_stex == address(0)) revert stHYPEWithdrawalModule__ZeroAddress();
         // Can only be set once
-        if (hamm != address(0)) revert WithdrawalModule__setHAMM_AlreadySet();
+        if (stex != address(0)) {
+            revert stHYPEWithdrawalModule__setSTEX_AlreadySet();
+        }
 
-        hamm = _hamm;
+        stex = _stex;
     }
 
     /**
@@ -178,7 +183,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
     function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
         external
         override
-        onlyHAMM
+        onlySTEX
         nonReentrant
     {
         // stHYPE's balances represent shares,
@@ -200,10 +205,10 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
      * @dev Only callable by `owner`.
      */
     function unstakeToken0Reserves() external override nonReentrant onlyOwner {
-        IHAMM hammInterface = IHAMM(hamm);
-        hammInterface.unstakeToken0Reserves();
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        stexInterface.unstakeToken0Reserves();
 
-        address token0 = hammInterface.token0();
+        address token0 = stexInterface.token0();
         uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
 
         _amountToken0PendingUnstaking += amountToken0;
@@ -255,14 +260,14 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         }
 
         // Wrap native token into token1 and re-deposit into the pool
-        IHAMM hammInterface = IHAMM(hamm);
-        address token1Address = hammInterface.token1();
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        address token1Address = stexInterface.token1();
         IWETH9 token1 = IWETH9(token1Address);
 
         token1.deposit{value: balanceSurplus}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
-        token1.safeTransfer(hammInterface.pool(), balanceSurplus);
+        token1.safeTransfer(stexInterface.pool(), balanceSurplus);
     }
 
     /**
@@ -274,12 +279,12 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
         if (request.amountToken1 == 0) {
-            revert WithdrawalModule__claim_alreadyClaimed();
+            revert stHYPEWithdrawalModule__claim_alreadyClaimed();
         }
 
         // Check if there is enough ETH available to fulfill this request
         if (amountToken1ClaimableLPWithdrawal < request.amountToken1) {
-            revert WithdrawalModule__claim_insufficientAmountToClaim();
+            revert stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
         }
 
         // Check if it is the right time to claim (according to queue priority)
@@ -287,7 +292,7 @@ contract WithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownabl
             cumulativeAmountToken1ClaimableLPWithdrawal
                 < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
         ) {
-            revert WithdrawalModule__claim_cannotYetClaim();
+            revert stHYPEWithdrawalModule__claim_cannotYetClaim();
         }
 
         amountToken1ClaimableLPWithdrawal -= request.amountToken1;

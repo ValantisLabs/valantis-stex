@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 import {ISovereignALM} from "@valantis-core/ALM/interfaces/ISovereignALM.sol";
 import {ISwapFeeModuleMinimal} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 
-interface IHAMM is ISovereignALM {
+interface ISTEXAMM is ISovereignALM {
     function pool() external view returns (address);
 
     function token0() external view returns (address);

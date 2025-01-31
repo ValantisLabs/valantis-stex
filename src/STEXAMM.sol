@@ -15,11 +15,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
-import {IHAMM} from "./interfaces/IHAMM.sol";
+import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
 
-contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
+/**
+ * @title Stake Exchange AMM.
+ */
+contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     using SafeERC20 for ERC20;
 
     /**
@@ -27,18 +30,18 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *  CUSTOM ERRORS
      *
      */
-    error HAMM__OnlyPool();
-    error HAMM__OnlyWithdrawalModule();
-    error HAMM__ZeroAddress();
-    error HAMM__deposit_lessThanMinShares();
-    error HAMM__deposit_zeroShares();
-    error HAMM__onSwapCallback_NotImplemented();
-    error HAMM__receive_onlyWETH9();
-    error HAMM__setManagerFeeBips_invalidManagerFeeBips();
-    error HAMM__withdraw_insufficientToken0Withdrawn();
-    error HAMM__withdraw_insufficientToken1Withdrawn();
-    error HAMM__withdraw_zeroShares();
-    error HAMM___checkDeadline_expired();
+    error STEXAMM__OnlyPool();
+    error STEXAMM__OnlyWithdrawalModule();
+    error STEXAMM__ZeroAddress();
+    error STEXAMM__deposit_lessThanMinShares();
+    error STEXAMM__deposit_zeroShares();
+    error STEXAMM__onSwapCallback_NotImplemented();
+    error STEXAMM__receive_onlyWETH9();
+    error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
+    error STEXAMM__withdraw_insufficientToken0Withdrawn();
+    error STEXAMM__withdraw_insufficientToken1Withdrawn();
+    error STEXAMM__withdraw_zeroShares();
+    error STEXAMM___checkDeadline_expired();
 
     /**
      *
@@ -106,7 +109,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
                 || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)
                 || _owner == address(0) || _withdrawalModule == address(0)
-        ) revert HAMM__ZeroAddress();
+        ) revert STEXAMM__ZeroAddress();
 
         SovereignPoolConstructorArgs memory args = SovereignPoolConstructorArgs(
             _token0,
@@ -145,14 +148,14 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     modifier onlyPool() {
         if (msg.sender != pool) {
-            revert HAMM__OnlyPool();
+            revert STEXAMM__OnlyPool();
         }
         _;
     }
 
     modifier onlyWithdrawalModule() {
         if (msg.sender != withdrawalModule) {
-            revert HAMM__OnlyWithdrawalModule();
+            revert STEXAMM__OnlyWithdrawalModule();
         }
         _;
     }
@@ -194,7 +197,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
     receive() external payable {
-        if (msg.sender != token1) revert HAMM__receive_onlyWETH9();
+        if (msg.sender != token1) revert STEXAMM__receive_onlyWETH9();
     }
 
     /**
@@ -275,9 +278,9 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
             );
         }
 
-        if (shares < _minShares) revert HAMM__deposit_lessThanMinShares();
+        if (shares < _minShares) revert STEXAMM__deposit_lessThanMinShares();
 
-        if (shares == 0) revert HAMM__deposit_zeroShares();
+        if (shares == 0) revert STEXAMM__deposit_zeroShares();
 
         _mint(_recipient, shares);
 
@@ -325,10 +328,10 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     ) external override nonReentrant returns (uint256 amount0, uint256 amount1) {
         _checkDeadline(_deadline);
 
-        if (_shares == 0) revert HAMM__withdraw_zeroShares();
+        if (_shares == 0) revert STEXAMM__withdraw_zeroShares();
 
         if (_recipient == address(0)) {
-            revert HAMM__ZeroAddress();
+            revert STEXAMM__ZeroAddress();
         }
 
         (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
@@ -357,10 +360,10 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         // Slippage protection checks
         if (amount0 < _amount0Min) {
-            revert HAMM__withdraw_insufficientToken0Withdrawn();
+            revert STEXAMM__withdraw_insufficientToken0Withdrawn();
         }
         if (amount1 < _amount1Min) {
-            revert HAMM__withdraw_insufficientToken1Withdrawn();
+            revert STEXAMM__withdraw_insufficientToken1Withdrawn();
         }
 
         // Burn LP tokens
@@ -419,7 +422,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         uint256, /*_amountIn*/
         uint256 /*_amountOut*/
     ) external pure override {
-        revert HAMM__onSwapCallback_NotImplemented();
+        revert STEXAMM__onSwapCallback_NotImplemented();
     }
 
     /**
@@ -428,6 +431,8 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
     function _checkDeadline(uint256 deadline) private view {
-        if (block.timestamp > deadline) revert HAMM___checkDeadline_expired();
+        if (block.timestamp > deadline) {
+            revert STEXAMM___checkDeadline_expired();
+        }
     }
 }
