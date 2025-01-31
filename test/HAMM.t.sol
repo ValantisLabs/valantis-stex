@@ -61,6 +61,8 @@ contract HAMMTest is Test {
         weth = new WETH();
 
         hamm = new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModule),
@@ -113,6 +115,8 @@ contract HAMMTest is Test {
 
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -124,6 +128,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(0),
             address(swapFeeModuleDeployment),
@@ -135,6 +141,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(0),
@@ -146,6 +154,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -157,6 +167,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -168,6 +180,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -179,6 +193,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -190,6 +206,8 @@ contract HAMMTest is Test {
         );
         vm.expectRevert(HAMM.HAMM__ZeroAddress.selector);
         new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),
@@ -201,6 +219,8 @@ contract HAMMTest is Test {
         );
 
         HAMM hammDeployment = new HAMM(
+            "Stake Exchange LP",
+            "STEX LP",
             address(token0),
             address(weth),
             address(swapFeeModuleDeployment),

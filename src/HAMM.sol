@@ -65,7 +65,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
     address public immutable swapFeeModule;
 
     /**
-     * @notice Address of LST token.
+     * @notice Address of Liquid Staking token.
      */
     address public immutable token0;
     /**
@@ -81,6 +81,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
     /**
      * @notice Address of Withdrawal Module.
+     * @dev This is the module which will interface with the LST's native withdrawal queue.
      */
     address public immutable withdrawalModule;
 
@@ -90,6 +91,8 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
     constructor(
+        string memory _name,
+        string memory _symbol,
         address _token0,
         address _token1,
         address _swapFeeModule,
@@ -98,7 +101,7 @@ contract HAMM is IHAMM, Ownable, ERC20, ReentrancyGuardTransient {
         address _poolFeeRecipient2,
         address _owner,
         address _withdrawalModule
-    ) Ownable(_owner) ERC20("Hyped AMM LP", "HAMM") {
+    ) Ownable(_owner) ERC20(_name, _symbol) {
         if (
             _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
                 || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)

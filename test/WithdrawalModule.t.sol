@@ -177,6 +177,8 @@ contract WithdrawalModuleTest is Test {
 
         vm.revertTo(snapshot);
 
+        // Update with all unstaking requests and LP withdrawals fulfilled + remaining funds re-deposited into pool
+
         recipient = makeAddr("MOCK_RECIPIENT");
         withdrawalModule.burnToken0AfterWithdraw(1 ether, recipient);
         amountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
