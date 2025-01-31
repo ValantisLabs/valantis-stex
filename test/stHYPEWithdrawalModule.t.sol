@@ -102,29 +102,11 @@ contract stHYPEWithdrawalModuleTest is Test {
         uint256 amountToken0 = 1 ether;
         address recipient = makeAddr("MOCK_RECIPIENT");
 
-        vm.prank(_pool);
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector);
-        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
-
-        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
-        // No token0 has been unstaked
-        assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
-        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), withdrawalModule.convertToToken1(amountToken0));
-        (address to, uint96 amount, uint256 amountCumulative) = withdrawalModule.LPWithdrawals(0);
-        assertEq(to, recipient);
-        assertEq(amount, withdrawalModule.convertToToken1(amountToken0));
-        assertEq(amountCumulative, 0);
-        assertEq(withdrawalModule.idLPWithdrawal(), 1);
+        _burnToken0AfterWithdraw(amountToken0, recipient);
     }
 
     function testUnstakeToken0Reserves() public {
-        vm.prank(_pool);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _pool));
-        withdrawalModule.unstakeToken0Reserves();
-
-        _token0.transfer(address(withdrawalModule), 3 ether);
-        withdrawalModule.unstakeToken0Reserves();
-        assertEq(withdrawalModule.amountToken0PendingUnstaking(), 3 ether);
+        _unstakeToken0Reserves(3 ether);
     }
 
     function testUpdate() public {
@@ -135,7 +117,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
         assertEq(withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), 0);
 
-        testUnstakeToken0Reserves();
+        _unstakeToken0Reserves(3 ether);
         assertEq(address(withdrawalModule).balance, 0);
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 3 ether);
 
@@ -198,5 +180,69 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         withdrawalModule.claim(0);
         assertEq(recipient.balance, amountToken1PendingLPWithdrawal);
+    }
+
+    function testClaimWithPriority() public {
+        uint256 amount1 = 1 ether;
+        address recipient1 = makeAddr("MOCK_RECIPIENT_1");
+        // User 1 requests withdrawal (before unstaking fulfillment)
+        _burnToken0AfterWithdraw(amount1, recipient1);
+
+        // User 2 requests withdrawal (before unstaking fulfillment)
+        uint256 amount2 = 2 ether;
+        address recipient2 = makeAddr("MOCK_RECIPIENT_2");
+        _burnToken0AfterWithdraw(amount2, recipient2);
+
+        // Simulate unstaking fulfillment
+        vm.deal(address(withdrawalModule), 4 ether);
+        withdrawalModule.update();
+
+        // User 3 requests withdrawal (after unstaking fulfillment)
+        uint256 amount3 = 0.1 ether;
+        address recipient3 = makeAddr("MOCK_RECIPIENT_3");
+        _burnToken0AfterWithdraw(amount3, recipient3);
+
+        // User 1 can claim, because it requested withdrawal before the call to `update`
+        withdrawalModule.claim(0);
+        assertGt(recipient1.balance, 0);
+
+        // User 3 cannot claim, because it requested withdrawal after the call to `update`
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_cannotYetClaim.selector);
+        withdrawalModule.claim(2);
+
+        // User 2 can claim, similar scenario to user 1
+        withdrawalModule.claim(1);
+        assertGt(recipient2.balance, 0);
+    }
+
+    function _burnToken0AfterWithdraw(uint256 amountToken0, address recipient) private {
+        vm.prank(_pool);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector);
+        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
+
+        uint256 preAmountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
+        uint256 preAmountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
+        // No token0 has been unstaked
+        assertEq(withdrawalModule.amountToken0PendingUnstaking(), preAmountToken0PendingUnstaking);
+        assertEq(
+            withdrawalModule.amountToken1PendingLPWithdrawal(),
+            withdrawalModule.convertToToken1(amountToken0) + preAmountToken1PendingLPWithdrawal
+        );
+        uint256 preId = withdrawalModule.idLPWithdrawal() - 1;
+        (address to, uint96 amount, uint256 amountCumulative) = withdrawalModule.LPWithdrawals(preId);
+        assertEq(to, recipient);
+        assertEq(amount, withdrawalModule.convertToToken1(amountToken0));
+    }
+
+    function _unstakeToken0Reserves(uint256 amount) private {
+        vm.prank(_pool);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _pool));
+        withdrawalModule.unstakeToken0Reserves();
+
+        uint256 preAmountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
+        _token0.transfer(address(withdrawalModule), amount);
+        withdrawalModule.unstakeToken0Reserves();
+        assertEq(withdrawalModule.amountToken0PendingUnstaking(), preAmountToken0PendingUnstaking + amount);
     }
 }
