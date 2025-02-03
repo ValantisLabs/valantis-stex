@@ -411,7 +411,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
                 IWETH9(token1).withdraw(amount1);
                 Address.sendValue(payable(_recipient), amount1);
             } else {
-                IWETH9(token1).transfer(_recipient, amount1);
+                ERC20(token1).safeTransfer(_recipient, amount1);
             }
         }
     }
