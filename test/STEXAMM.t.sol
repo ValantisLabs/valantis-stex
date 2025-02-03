@@ -267,10 +267,11 @@ contract STEXAMMTest is Test {
 
     function testReceive() public {
         vm.expectRevert(STEXAMM.STEXAMM__receive_onlyWETH9.selector);
-        address(stex).call{value: 1 ether}("");
+        (bool success,) = address(stex).call{value: 1 ether}("");
+        assertTrue(success);
 
         vm.prank(address(weth));
-        (bool success,) = address(stex).call{value: 1 ether}("");
+        (success,) = address(stex).call{value: 1 ether}("");
         assertTrue(success);
         assertEq(address(stex).balance, 1 ether);
     }
@@ -437,7 +438,7 @@ contract STEXAMMTest is Test {
 
         vm.startPrank(recipient);
 
-        uint256 snapshot1 = vm.snapshot();
+        uint256 snapshot1 = vm.snapshotState();
 
         // Test regular withdrawal in liquid token1
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
@@ -448,7 +449,7 @@ contract STEXAMMTest is Test {
         assertLt(postReserve1, preReserve1);
 
         // Test regular withdrawal in liquid native token (unwrapped token1)
-        vm.revertTo(snapshot1);
+        vm.revertToState(snapshot1);
 
         uint256 preBalance = recipient.balance;
         stex.withdraw(shares, 0, 0, block.timestamp, recipient, true, false);
@@ -655,15 +656,21 @@ contract STEXAMMTest is Test {
         assertEq(amountInUsed, 10 ether);
         assertEq(weth.balanceOf(recipient), amountOut);
 
+        // Mock token1 fee via donation
+        weth.transfer(address(stex), 1 ether);
+
         // Pool manager fee has automatically been transferred to HAMM during the swap
         assertGt(token0.balanceOf(address(stex)), 0);
-        assertEq(weth.balanceOf(address(stex)), 0);
+        assertEq(weth.balanceOf(address(stex)), 1 ether);
 
         // Claim pool manager fees
         stex.claimPoolManagerFees();
         assertGt(token0.balanceOf(poolFeeRecipient1), 0);
         assertGt(token0.balanceOf(poolFeeRecipient2), 0);
+        assertEq(weth.balanceOf(poolFeeRecipient1), 0.5 ether);
+        assertEq(weth.balanceOf(poolFeeRecipient2), 0.5 ether);
         assertEq(token0.balanceOf(address(stex)), 0);
+        assertEq(weth.balanceOf(address(stex)), 0);
     }
 
     function testUnstakeToken0Reserves() public {

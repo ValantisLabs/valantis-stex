@@ -121,8 +121,8 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(address(withdrawalModule).balance, 0);
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 3 ether);
 
-        uint256 snapshot = vm.snapshot();
-        uint256 snapshot2 = vm.snapshot();
+        uint256 snapshot = vm.snapshotState();
+        uint256 snapshot2 = vm.snapshotState();
 
         // Update with partial unstaking fulfilled
         vm.deal(address(withdrawalModule), 2 ether);
@@ -134,7 +134,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(address(withdrawalModule).balance, 0);
         assertEq(weth.balanceOf(_pool), 2 ether);
 
-        vm.revertTo(snapshot2);
+        vm.revertToState(snapshot2);
 
         // Update with partial unstaking fulfilled and partial LP withdrawal
 
@@ -157,7 +157,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_insufficientAmountToClaim.selector);
         withdrawalModule.claim(0);
 
-        vm.revertTo(snapshot);
+        vm.revertToState(snapshot);
 
         // Update with all unstaking requests and LP withdrawals fulfilled + remaining funds re-deposited into pool
 
@@ -230,9 +230,11 @@ contract stHYPEWithdrawalModuleTest is Test {
             withdrawalModule.convertToToken1(amountToken0) + preAmountToken1PendingLPWithdrawal
         );
         uint256 preId = withdrawalModule.idLPWithdrawal() - 1;
+        uint256 preAmountCumulative = withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal();
         (address to, uint96 amount, uint256 amountCumulative) = withdrawalModule.LPWithdrawals(preId);
         assertEq(to, recipient);
         assertEq(amount, withdrawalModule.convertToToken1(amountToken0));
+        assertEq(amountCumulative, preAmountCumulative);
     }
 
     function _unstakeToken0Reserves(uint256 amount) private {

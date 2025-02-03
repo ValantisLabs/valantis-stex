@@ -209,11 +209,19 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         ISovereignPool(pool).setPoolManagerFeeBips(_poolManagerFeeBips);
     }
 
+    /**
+     * @notice Claim any accrued manager/protocol fees.
+     * @dev Anyone can call this function.
+     */
     function claimPoolManagerFees() external override nonReentrant {
+        // WARNING: No donations should be made to this contract,
+        // otherwise they will be accounted as manager fees
+
         // token0 fees are automatically sent to this contract (poolManager) on every swap,
         // because of SovereignPool::swap behavior for rebase input token
-        // No fees are applied on token1 -> token0 swaps
         uint256 fee0Received = ERC20(token0).balanceOf(address(this));
+        // token1 fees are accrued on instant withdrawals
+        uint256 fee1Received = ERC20(token1).balanceOf(address(this));
 
         // 50/50 split between `poolFeeRecipient1` and `poolFeeRecipient2`
 
@@ -226,6 +234,18 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             uint256 fee0ToRecipient2 = fee0Received - fee0ToRecipient1;
             if (fee0ToRecipient2 > 0) {
                 ERC20(token0).safeTransfer(poolFeeRecipient2, fee0ToRecipient2);
+            }
+        }
+
+        if (fee1Received > 0) {
+            uint256 fee1ToRecipient1 = fee1Received / 2;
+            if (fee1ToRecipient1 > 0) {
+                ERC20(token1).safeTransfer(poolFeeRecipient1, fee1ToRecipient1);
+            }
+
+            uint256 fee1ToRecipient2 = fee1Received - fee1ToRecipient1;
+            if (fee1ToRecipient2 > 0) {
+                ERC20(token1).safeTransfer(poolFeeRecipient2, fee1ToRecipient2);
             }
         }
     }
@@ -350,10 +370,14 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
         amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
 
-        // This is equivalent to an instant swap into token1, and withdraw the total amount in token1
+        // This is equivalent to an instant swap into token1 (with an extra fee in token1),
+        // and withdraw the total amount in token1
+        uint256 instantWithdrawalFee1;
         if (_isInstantWithdrawal) {
             uint256 amount1SwapEquivalent = getAmountOut(token0, amount0);
-            amount1 += amount1SwapEquivalent;
+            // Apply manager fee on instant withdrawals in token1
+            instantWithdrawalFee1 = (amount1SwapEquivalent * ISovereignPool(pool).poolManagerFeeBips()) / BIPS;
+            amount1 += (amount1SwapEquivalent - instantWithdrawalFee1);
 
             amount0 = 0;
         }
@@ -375,16 +399,19 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             IWithdrawalModule(withdrawalModule).burnToken0AfterWithdraw(amount0, _recipient);
         }
 
-        // Withdraw token1 amount from pool and send to recipient,
+        // Withdraw total token1 amount from pool,
+        // witholding any due pool manager fees, and send remaining amount to recipient,
         // also unwrapping into native token if necessary
         if (amount1 > 0) {
             ISovereignPool(pool).withdrawLiquidity(
-                0, amount1, msg.sender, _unwrapToNativeToken ? address(this) : _recipient, new bytes(0)
+                0, amount1 + instantWithdrawalFee1, msg.sender, address(this), new bytes(0)
             );
 
             if (_unwrapToNativeToken) {
                 IWETH9(token1).withdraw(amount1);
                 Address.sendValue(payable(_recipient), amount1);
+            } else {
+                IWETH9(token1).transfer(_recipient, amount1);
             }
         }
     }
