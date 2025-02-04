@@ -42,12 +42,13 @@ contract DepositWrapperTest is Test {
 
     function testReceive() public {
         vm.expectRevert(DepositWrapper.DepositWrapper__receive_OnlyWETH9.selector);
-        address(nativeWrapper).call{value: 1 ether}("");
+        (bool success,) = address(nativeWrapper).call{value: 1 ether}("");
+        assertTrue(success);
 
         vm.deal(address(weth), 1 ether);
 
         vm.prank(address(weth));
-        (bool success,) = address(nativeWrapper).call{value: 1 ether}("");
+        (success,) = address(nativeWrapper).call{value: 1 ether}("");
         assertTrue(success);
         assertEq(address(nativeWrapper).balance, 1 ether);
     }

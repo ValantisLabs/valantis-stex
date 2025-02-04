@@ -276,6 +276,71 @@ contract STEXAMMTest is Test {
         assertEq(address(stex).balance, 1 ether);
     }
 
+    function testSwapFeeModuleProposal() public {
+        address swapFeeModule = makeAddr("MOCK_SWAP_FEE_MODULE");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        stex.proposeSwapFeeModule(address(0), 3 days);
+
+        vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooLow.selector);
+        stex.proposeSwapFeeModule(swapFeeModule, 3 days - 1);
+        vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooHigh.selector);
+        stex.proposeSwapFeeModule(swapFeeModule, 7 days + 1);
+
+        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+        (address swapFeeModuleProposed, uint256 startTimestamp) = stex.swapFeeModuleProposal();
+        assertEq(swapFeeModuleProposed, swapFeeModule);
+        assertEq(startTimestamp, block.timestamp + 3 days);
+
+        vm.expectRevert(STEXAMM.STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive.selector);
+        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+
+        vm.stopPrank();
+
+        uint256 snapshot = vm.snapshotState();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.cancelSwapFeeModuleProposal();
+
+        vm.startPrank(owner);
+
+        stex.cancelSwapFeeModuleProposal();
+        (swapFeeModuleProposed, startTimestamp) = stex.swapFeeModuleProposal();
+        assertEq(swapFeeModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.stopPrank();
+
+        vm.revertToState(snapshot);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.setProposedSwapFeeModule();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedSwapFeeModule_Timelock.selector);
+        stex.setProposedSwapFeeModule();
+
+        vm.warp(block.timestamp + 3 days);
+
+        stex.setProposedSwapFeeModule();
+        assertEq(pool.swapFeeModule(), swapFeeModule);
+
+        (swapFeeModuleProposed, startTimestamp) = stex.swapFeeModuleProposal();
+        assertEq(swapFeeModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedSwapFeeModule_InactiveProposal.selector);
+        stex.setProposedSwapFeeModule();
+
+        vm.stopPrank();
+    }
+
     function testSetSwapFeeParams() public {
         _setSwapFeeParams(1000, 7000, 1, 20);
     }

@@ -18,6 +18,7 @@ import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
+import {SwapFeeModuleProposal} from "./structs/STEXAMMStructs.sol";
 
 /**
  * @title Stake Exchange AMM.
@@ -37,11 +38,16 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__deposit_zeroShares();
     error STEXAMM__onSwapCallback_NotImplemented();
     error STEXAMM__receive_onlyWETH9();
+    error STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive();
+    error STEXAMM__setProposedSwapFeeModule_InactiveProposal();
+    error STEXAMM__setProposedSwapFeeModule_Timelock();
     error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
     error STEXAMM__withdraw_insufficientToken0Withdrawn();
     error STEXAMM__withdraw_insufficientToken1Withdrawn();
     error STEXAMM__withdraw_zeroShares();
     error STEXAMM___checkDeadline_expired();
+    error STEXAMM___verifyTimelockDelay_timelockTooLow();
+    error STEXAMM___verifyTimelockDelay_timelockTooHigh();
 
     /**
      *
@@ -50,6 +56,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     uint256 private constant BIPS = 10_000;
     uint256 private constant MINIMUM_LIQUIDITY = 1e9;
+
+    uint256 private constant MIN_TIMELOCK_DELAY = 3 days;
+    uint256 private constant MAX_TIMELOCK_DELAY = 7 days;
 
     /**
      *
@@ -87,6 +96,19 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @dev This is the module which will interface with the LST's native withdrawal queue.
      */
     address public immutable withdrawalModule;
+
+    /**
+     *
+     *  STORAGE
+     *
+     */
+
+    /**
+     * @notice Pending update proposal to Swap Fee Module.
+     *         *swapFeeModule: Address of new Swap Fee Module.
+     *         *startTimestamp: Block timestamp after which this proposal can be applied by `owner`.
+     */
+    SwapFeeModuleProposal public swapFeeModuleProposal;
 
     /**
      *
@@ -198,6 +220,55 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     receive() external payable {
         if (msg.sender != token1) revert STEXAMM__receive_onlyWETH9();
+    }
+
+    /**
+     * @notice Propose an update to Swap Fee Module under a timelock.
+     * @dev Only callable by `owner`.
+     * @param _swapFeeModule Address of new Swap Fee Module to set.
+     * @param _timelockDelay Timelock delay in seconds. Must be in range [3 days, 7 days].
+     */
+    function proposeSwapFeeModule(address _swapFeeModule, uint256 _timelockDelay) external override onlyOwner {
+        if (_swapFeeModule == address(0)) revert STEXAMM__ZeroAddress();
+
+        // An honest `owner` can propose a timelock delay greater than the minimum,
+        // but no greater than the maximum
+        _verifyTimelockDelay(_timelockDelay);
+
+        if (swapFeeModuleProposal.startTimestamp > 0) {
+            revert STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive();
+        }
+
+        swapFeeModuleProposal =
+            SwapFeeModuleProposal({swapFeeModule: _swapFeeModule, startTimestamp: block.timestamp + _timelockDelay});
+    }
+
+    /**
+     * @notice Cancel a pending update proposal to Swap Fee Module.
+     * @dev Only callable by `owner`.
+     */
+    function cancelSwapFeeModuleProposal() external override onlyOwner {
+        delete swapFeeModuleProposal;
+    }
+
+    /**
+     * @notice Set the proposed Swap Fee Module in Sovereign Pool after timelock delay.
+     * @dev Only callable by `owner`.
+     */
+    function setProposedSwapFeeModule() external override onlyOwner {
+        SwapFeeModuleProposal memory proposal = swapFeeModuleProposal;
+
+        if (proposal.startTimestamp == 0) {
+            revert STEXAMM__setProposedSwapFeeModule_InactiveProposal();
+        }
+
+        if (block.timestamp < proposal.startTimestamp) {
+            revert STEXAMM__setProposedSwapFeeModule_Timelock();
+        }
+
+        ISovereignPool(pool).setSwapFeeModule(proposal.swapFeeModule);
+
+        delete swapFeeModuleProposal;
     }
 
     /**
@@ -460,6 +531,16 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     function _checkDeadline(uint256 deadline) private view {
         if (block.timestamp > deadline) {
             revert STEXAMM___checkDeadline_expired();
+        }
+    }
+
+    function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
+        if (_timelockDelay < MIN_TIMELOCK_DELAY) {
+            revert STEXAMM___verifyTimelockDelay_timelockTooLow();
+        }
+
+        if (_timelockDelay > MAX_TIMELOCK_DELAY) {
+            revert STEXAMM___verifyTimelockDelay_timelockTooHigh();
         }
     }
 }

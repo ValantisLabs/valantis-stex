@@ -17,6 +17,12 @@ interface ISTEXAMM is ISovereignALM {
 
     function withdrawalModule() external view returns (address);
 
+    function proposeSwapFeeModule(address _swapFeeModule, uint256 _timelockDelay) external;
+
+    function cancelSwapFeeModuleProposal() external;
+
+    function setProposedSwapFeeModule() external;
+
     function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external;
 
     function claimPoolManagerFees() external;
