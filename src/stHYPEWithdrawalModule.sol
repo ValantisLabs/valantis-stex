@@ -24,6 +24,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     /**
      *
+     *  EVENTS
+     *
+     */
+    event STEXSet(address stex);
+    event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
+    event LPWithdrawalRequestClaimed(uint256 id);
+
+    /**
+     *
      *  CUSTOM ERRORS
      *
      */
@@ -165,6 +174,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         }
 
         stex = _stex;
+
+        emit STEXSet(_stex);
     }
 
     /**
@@ -191,6 +202,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         uint256 amountToken1 = convertToToken1(_amountToken0);
 
         amountToken1PendingLPWithdrawal += amountToken1;
+
+        emit LPWithdrawalRequestCreated(idLPWithdrawal, amountToken1, _recipient);
 
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
@@ -296,6 +309,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         }
 
         amountToken1ClaimableLPWithdrawal -= request.amountToken1;
+
+        emit LPWithdrawalRequestClaimed(_idLPQueue);
 
         delete LPWithdrawals[_idLPQueue];
 

@@ -143,6 +143,8 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             revert STEXRatioSwapFeeModule__setPool_alreadySet();
         }
         pool = _pool;
+
+        emit PoolSet(_pool);
     }
 
     /**
@@ -188,5 +190,7 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             feeMinBips: _feeMinBips,
             feeMaxBips: _feeMaxBips
         });
+
+        emit SwapFeeParamsSet(_minThresholdRatioBips, _maxThresholdRatioBips, _feeMinBips, _feeMaxBips);
     }
 }

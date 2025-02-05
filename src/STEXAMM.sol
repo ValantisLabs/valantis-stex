@@ -241,6 +241,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         swapFeeModuleProposal =
             SwapFeeModuleProposal({swapFeeModule: _swapFeeModule, startTimestamp: block.timestamp + _timelockDelay});
+
+        emit SwapFeeModuleProposed(swapFeeModule, block.timestamp + _timelockDelay);
     }
 
     /**
@@ -248,6 +250,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @dev Only callable by `owner`.
      */
     function cancelSwapFeeModuleProposal() external override onlyOwner {
+        emit SwapFeeModuleProposalCancelled();
+
         delete swapFeeModuleProposal;
     }
 
@@ -268,6 +272,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         ISovereignPool(pool).setSwapFeeModule(proposal.swapFeeModule);
 
+        emit SwapFeeModuleSet(proposal.swapFeeModule);
+
         delete swapFeeModuleProposal;
     }
 
@@ -278,6 +284,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external override onlyOwner nonReentrant {
         ISovereignPool(pool).setPoolManagerFeeBips(_poolManagerFeeBips);
+
+        emit PoolManagerFeeSet(_poolManagerFeeBips);
     }
 
     /**
@@ -319,6 +327,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
                 ERC20(token1).safeTransfer(poolFeeRecipient2, fee1ToRecipient2);
             }
         }
+
+        emit PoolManagerFeesClaimed(fee0Received, fee1Received);
     }
 
     /**
@@ -331,6 +341,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         (uint256 reserve0,) = poolInterface.getReserves();
         poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
+
+        emit Token0ReservesUnstaked(reserve0);
     }
 
     /**
@@ -376,6 +388,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         _mint(_recipient, shares);
 
         ISovereignPool(pool).depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
+
+        emit Deposit(msg.sender, _recipient, _amount, shares);
     }
 
     /**
@@ -427,19 +441,21 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
 
-        uint256 totalSupplyCache = totalSupply();
-        // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = IWithdrawalModule(withdrawalModule).amountToken1PendingLPWithdrawal();
-        // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
-        // minus LP amount already pending withdrawal
-        amount0 = Math.mulDiv(
-            reserve0 + IWithdrawalModule(withdrawalModule).amountToken0PendingUnstaking()
-                - IWithdrawalModule(withdrawalModule).convertToToken0(reserve1PendingWithdrawal),
-            _shares,
-            totalSupplyCache
-        );
-        // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
-        amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
+        {
+            uint256 totalSupplyCache = totalSupply();
+            // Account for token1 pending withdrawal to LPs (locked)
+            uint256 reserve1PendingWithdrawal = IWithdrawalModule(withdrawalModule).amountToken1PendingLPWithdrawal();
+            // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
+            // minus LP amount already pending withdrawal
+            amount0 = Math.mulDiv(
+                reserve0 + IWithdrawalModule(withdrawalModule).amountToken0PendingUnstaking()
+                    - IWithdrawalModule(withdrawalModule).convertToToken0(reserve1PendingWithdrawal),
+                _shares,
+                totalSupplyCache
+            );
+            // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
+            amount1 = Math.mulDiv(reserve1, _shares, totalSupplyCache);
+        }
 
         // This is equivalent to an instant swap into token1 (with an extra fee in token1),
         // and withdraw the total amount in token1
@@ -485,6 +501,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
                 ERC20(token1).safeTransfer(_recipient, amount1);
             }
         }
+
+        emit Withdraw(msg.sender, amount0, amount1, _shares);
     }
 
     /**

@@ -5,6 +5,22 @@ import {ISovereignALM} from "@valantis-core/ALM/interfaces/ISovereignALM.sol";
 import {ISwapFeeModuleMinimal} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 
 interface ISTEXAMM is ISovereignALM {
+    event SwapFeeModuleProposed(address swapFeeModule, uint256 startTimestamp);
+
+    event SwapFeeModuleProposalCancelled();
+
+    event SwapFeeModuleSet(address swapFeeModule);
+
+    event PoolManagerFeeSet(uint256 poolManagerFeeBips);
+
+    event PoolManagerFeesClaimed(uint256 fee0, uint256 fee1);
+
+    event Token0ReservesUnstaked(uint256 reserve0);
+
+    event Deposit(address indexed sender, address indexed recipient, uint256 amountToken1, uint256 shares);
+
+    event Withdraw(address indexed sender, uint256 amountToken0, uint256 amountToken1, uint256 shares);
+
     function pool() external view returns (address);
 
     function token0() external view returns (address);
