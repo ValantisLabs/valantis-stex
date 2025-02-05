@@ -74,7 +74,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(withdrawalModuleDeployment.owner(), address(this));
     }
 
-    function testSetHAMM() public {
+    function testSetSTEX() public {
         stHYPEWithdrawalModule withdrawalModuleDeployment = testDeploy();
 
         vm.prank(_pool);

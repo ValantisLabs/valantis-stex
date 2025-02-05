@@ -53,17 +53,17 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
 
     /**
-     * @notice Address of Stake Exchange AMM deployment.
+     * @notice Address of Stake Exchange AMM (STEX AMM) deployment.
      */
     address public stex;
 
     /**
-     * @notice Amount of native `token1` which is owed to HAMM LPs who have burnt their LP tokens.
+     * @notice Amount of native `token1` which is owed to STEX AMM LPs who have burnt their LP tokens.
      */
     uint256 public amountToken1PendingLPWithdrawal;
 
     /**
-     * @notice Amount of native `token1` which is ready for eligible HAMM LPs to claim.
+     * @notice Amount of native `token1` which is ready for eligible STEX AMM LPs to claim.
      */
     uint256 public amountToken1ClaimableLPWithdrawal;
 

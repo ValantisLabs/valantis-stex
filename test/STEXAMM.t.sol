@@ -277,10 +277,10 @@ contract STEXAMMTest is Test {
     }
 
     function testSwapFeeModuleProposal() public {
-        address swapFeeModule = makeAddr("MOCK_SWAP_FEE_MODULE");
+        address swapFeeModuleMock = makeAddr("MOCK_SWAP_FEE_MODULE");
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+        stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
 
         vm.startPrank(owner);
 
@@ -288,17 +288,17 @@ contract STEXAMMTest is Test {
         stex.proposeSwapFeeModule(address(0), 3 days);
 
         vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooLow.selector);
-        stex.proposeSwapFeeModule(swapFeeModule, 3 days - 1);
+        stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days - 1);
         vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooHigh.selector);
-        stex.proposeSwapFeeModule(swapFeeModule, 7 days + 1);
+        stex.proposeSwapFeeModule(swapFeeModuleMock, 7 days + 1);
 
-        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+        stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
         (address swapFeeModuleProposed, uint256 startTimestamp) = stex.swapFeeModuleProposal();
-        assertEq(swapFeeModuleProposed, swapFeeModule);
+        assertEq(swapFeeModuleProposed, swapFeeModuleMock);
         assertEq(startTimestamp, block.timestamp + 3 days);
 
         vm.expectRevert(STEXAMM.STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive.selector);
-        stex.proposeSwapFeeModule(swapFeeModule, 3 days);
+        stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
 
         vm.stopPrank();
 
@@ -329,7 +329,7 @@ contract STEXAMMTest is Test {
         vm.warp(block.timestamp + 3 days);
 
         stex.setProposedSwapFeeModule();
-        assertEq(pool.swapFeeModule(), swapFeeModule);
+        assertEq(pool.swapFeeModule(), swapFeeModuleMock);
 
         (swapFeeModuleProposed, startTimestamp) = stex.swapFeeModuleProposal();
         assertEq(swapFeeModuleProposed, address(0));
@@ -724,7 +724,7 @@ contract STEXAMMTest is Test {
         // Mock token1 fee via donation
         weth.transfer(address(stex), 1 ether);
 
-        // Pool manager fee has automatically been transferred to HAMM during the swap
+        // Pool manager fee has automatically been transferred to STEX during the swap
         assertGt(token0.balanceOf(address(stex)), 0);
         assertEq(weth.balanceOf(address(stex)), 1 ether);
 
