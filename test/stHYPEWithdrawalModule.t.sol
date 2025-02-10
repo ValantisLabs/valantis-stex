@@ -24,7 +24,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     function setUp() public {
         overseer = new MockOverseer();
 
-        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
 
         _token0 = new MockStHype();
         weth = new WETH();
@@ -64,12 +64,13 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
-        new stHYPEWithdrawalModule(address(0), address(this));
+        new stHYPEWithdrawalModule(address(0), address(0), address(0), address(this));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new stHYPEWithdrawalModule(address(overseer), address(0));
+        new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(0));
 
-        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
+        withdrawalModuleDeployment =
+            new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
     }

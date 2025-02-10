@@ -45,6 +45,8 @@ interface ISTEXAMM is ISovereignALM {
 
     function unstakeToken0Reserves() external;
 
+    function supplyToken1Reserves(uint256 _amount1) external;
+
     function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
         external
         returns (uint256 shares);

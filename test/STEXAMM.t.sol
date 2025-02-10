@@ -51,7 +51,7 @@ contract STEXAMMTest is Test {
         address sovereignPoolFactory = address(new SovereignPoolFactory());
         protocolFactory.setSovereignPoolFactory(sovereignPoolFactory);
 
-        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
@@ -103,7 +103,8 @@ contract STEXAMMTest is Test {
     }
 
     function testDeploy() public {
-        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
+        stHYPEWithdrawalModule withdrawalModuleDeployment =
+            new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
