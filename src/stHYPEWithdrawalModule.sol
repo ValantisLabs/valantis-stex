@@ -41,6 +41,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__ZeroAddress();
     error stHYPEWithdrawalModule__OnlyInitializer();
     error stHYPEWithdrawalModule__OnlySTEX();
+    error stHYPEWithdrawalModule__OnlySTEXOrOwner();
     error stHYPEWithdrawalModule__claim_alreadyClaimed();
     error stHYPEWithdrawalModule__claim_cannotYetClaim();
     error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
@@ -134,6 +135,13 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     modifier onlySTEX() {
         if (msg.sender != stex) {
             revert stHYPEWithdrawalModule__OnlySTEX();
+        }
+        _;
+    }
+
+    modifier onlySTEXOrOwner() {
+        if (msg.sender != stex && msg.sender != owner()) {
+            revert stHYPEWithdrawalModule__OnlySTEXOrOwner();
         }
         _;
     }
@@ -245,19 +253,22 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     /**
      * @notice This function gets called after an LP burns its LP tokens,
      *         in order to withdraw `token1` amounts from the lending protocol.
-     * @dev Only callable by the AMM.
-     * @param _amountToken1 Amount of token1 which would be due to `_recipient`.
+     * @dev Only callable by the AMM or `owner`.
+     * @dev `owner` can only withdraw from lending pool into AMM's Sovereign Pool.
+     * @param _amountToken1 Amount of token1 which is due to `_recipient`.
      * @param _recipient Address which should receive `_amountToken1` of `token1`.
      */
     function withdrawToken1FromLendingPool(uint256 _amountToken1, address _recipient)
         external
         override
-        onlySTEX
+        onlySTEXOrOwner
         nonReentrant
     {
         if (lendingPool == address(0)) return;
 
-        IPool(lendingPool).withdraw(ISTEXAMM(stex).token1(), _amountToken1, _recipient);
+        IPool(lendingPool).withdraw(
+            ISTEXAMM(stex).token1(), _amountToken1, msg.sender == stex ? _recipient : ISTEXAMM(stex).pool()
+        );
     }
 
     /**

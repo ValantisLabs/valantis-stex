@@ -379,16 +379,16 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
             shares = _amount - MINIMUM_LIQUIDITY;
         } else {
-            (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
+            (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(pool).getReserves();
             // Account for token0 in pool (liquid) and pending unstaking (locked)
-            uint256 reserve0Total = reserve0 + _withdrawalModule.amountToken0PendingUnstaking();
+            uint256 reserve0Total = reserve0Pool + _withdrawalModule.amountToken0PendingUnstaking();
             // Account for token1 pending withdrawal to LPs (locked)
             uint256 reserve1PendingWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawal();
             // shares calculated in terms of token1
             shares = Math.mulDiv(
                 _amount,
                 totalSupplyCache,
-                reserve1 + _withdrawalModule.amountToken1LendingPool()
+                reserve1Pool + _withdrawalModule.amountToken1LendingPool()
                     + _withdrawalModule.convertToToken1(reserve0Total) - reserve1PendingWithdrawal
             );
         }
@@ -451,7 +451,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             revert STEXAMM__ZeroAddress();
         }
 
-        (uint256 reserve0, uint256 reserve1) = ISovereignPool(pool).getReserves();
+        (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(pool).getReserves();
 
         uint256 amount1LendingPool;
         {
@@ -461,7 +461,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
             // minus LP amount already pending withdrawal
             amount0 = Math.mulDiv(
-                reserve0 + _withdrawalModule.amountToken0PendingUnstaking()
+                reserve0Pool + _withdrawalModule.amountToken0PendingUnstaking()
                     - _withdrawalModule.convertToToken0(reserve1PendingWithdrawal),
                 _shares,
                 totalSupplyCache
@@ -469,8 +469,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
             amount1LendingPool = Math.mulDiv(_withdrawalModule.amountToken1LendingPool(), _shares, totalSupplyCache);
             // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
-            // plus token1 amount earning yield in lending pool
-            amount1 = amount1LendingPool + Math.mulDiv(reserve1, _shares, totalSupplyCache);
+            // plus pro-rata share of token1 reserves earning yield in lending pool (liquid, assuming lending pool is working correctly)
+            amount1 = amount1LendingPool + Math.mulDiv(reserve1Pool, _shares, totalSupplyCache);
         }
 
         // This is equivalent to an instant swap into token1 (with an extra fee in token1),
