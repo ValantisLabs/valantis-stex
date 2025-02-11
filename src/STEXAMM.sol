@@ -526,27 +526,25 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             _withdrawalModule.withdrawToken1FromLendingPool(cache.amount1LendingPool, _recipient);
         }
 
-        if (amount1 + cache.instantWithdrawalFee1 <= cache.amount1LendingPool) {
-            return (amount0, amount1);
-        }
+        if (amount1 + cache.instantWithdrawalFee1 > cache.amount1LendingPool) {
+            // Withdraw due token1 amount from pool into this module,
+            // witholding any due pool manager fees, and send remaining amount to recipient,
+            // also unwrapping into native token if necessary
+            cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1 - cache.amount1LendingPool;
 
-        // Withdraw total token1 amount from pool into this module,
-        // witholding any due pool manager fees, and send remaining amount to recipient,
-        // also unwrapping into native token if necessary
-        cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1 - cache.amount1LendingPool;
+            ISovereignPool(pool).withdrawLiquidity(0, cache.amount1Remaining, msg.sender, address(this), new bytes(0));
 
-        ISovereignPool(pool).withdrawLiquidity(0, cache.amount1Remaining, msg.sender, address(this), new bytes(0));
-
-        if (cache.amount1Remaining > cache.instantWithdrawalFee1) {
-            if (_unwrapToNativeToken) {
-                IWETH9(token1).withdraw(cache.amount1Remaining - cache.instantWithdrawalFee1);
-                Address.sendValue(payable(_recipient), cache.amount1Remaining - cache.instantWithdrawalFee1);
-            } else {
-                ERC20(token1).safeTransfer(_recipient, cache.amount1Remaining - cache.instantWithdrawalFee1);
+            if (cache.amount1Remaining > cache.instantWithdrawalFee1) {
+                if (_unwrapToNativeToken) {
+                    IWETH9(token1).withdraw(cache.amount1Remaining - cache.instantWithdrawalFee1);
+                    Address.sendValue(payable(_recipient), cache.amount1Remaining - cache.instantWithdrawalFee1);
+                } else {
+                    ERC20(token1).safeTransfer(_recipient, cache.amount1Remaining - cache.instantWithdrawalFee1);
+                }
             }
         }
 
-        emit Withdraw(msg.sender, amount0, amount1, _shares);
+        emit Withdraw(msg.sender, _recipient, amount0, amount1, _shares);
     }
 
     /**

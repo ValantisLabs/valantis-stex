@@ -18,6 +18,7 @@ import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
 import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
+import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
 import {FeeParams} from "src/structs/STEXRatioSwapFeeModuleStructs.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
@@ -36,6 +37,8 @@ contract STEXAMMTest is Test {
 
     MockOverseer overseer;
 
+    MockLendingPool lendingPool;
+
     address public poolFeeRecipient1 = makeAddr("POOL_FEE_RECIPIENT_1");
     address public poolFeeRecipient2 = makeAddr("POOL_FEE_RECIPIENT_2");
 
@@ -51,13 +54,17 @@ contract STEXAMMTest is Test {
         address sovereignPoolFactory = address(new SovereignPoolFactory());
         protocolFactory.setSovereignPoolFactory(sovereignPoolFactory);
 
-        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
+        token0 = new MockStHype();
+        weth = new WETH();
+
+        lendingPool = new MockLendingPool(address(weth));
+
+        withdrawalModule = new stHYPEWithdrawalModule(
+            address(overseer), address(lendingPool), lendingPool.lendingPoolYieldToken(), address(this)
+        );
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
-
-        token0 = new MockStHype();
-        weth = new WETH();
 
         stex = new STEXAMM(
             "Stake Exchange LP",
@@ -602,6 +609,27 @@ contract STEXAMMTest is Test {
 
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
         withdrawalModule.claim(0);
+    }
+
+    function testWithdraw__FromLendingPool() public {
+        address recipient = makeAddr("RECIPIENT");
+
+        _setSwapFeeParams(3000, 5000, 1, 30);
+
+        _deposit(10e18, recipient);
+
+        token0.mint{value: 1e16}(address(pool));
+
+        weth.transfer(address(pool), 2 ether);
+        withdrawalModule.supplyToken1ToLendingPool(2 ether);
+        assertEq(withdrawalModule.amountToken1LendingPool(), 2 ether);
+
+        uint256 shares = stex.balanceOf(recipient) / 2;
+        assertGt(shares, 0);
+
+        vm.startPrank(recipient);
+
+        stex.withdraw(shares, 0, 0, block.timestamp, recipient, true, true);
     }
 
     function testWithdraw__InstantWithdrawal() public {

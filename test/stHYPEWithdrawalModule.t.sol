@@ -99,6 +99,9 @@ contract stHYPEWithdrawalModuleTest is Test {
             new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
+        assertEq(withdrawalModuleDeployment.lendingPool(), address(0));
+        assertEq(withdrawalModuleDeployment.lendingPoolYieldToken(), address(0));
+        assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
     }
 
     function testAmountToken1LendingPool() public {
@@ -180,7 +183,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
         assertEq(weth.balanceOf(recipient), amountToken1);
 
-        vm.revertTo(snapshot);
+        vm.revertToState(snapshot);
 
         // Revert happens if recipient receives less than amountToken1
         lendingPool.setIsCompromised(true);
