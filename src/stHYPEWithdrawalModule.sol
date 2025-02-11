@@ -18,7 +18,8 @@ import {IPool} from "./interfaces/aavev3/IPool.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
 /**
- * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype.
+ * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
+ *         and AAVE V3 compatible lending protocol.
  */
 contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
     using SafeCast for uint256;
@@ -42,10 +43,12 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__OnlyInitializer();
     error stHYPEWithdrawalModule__OnlySTEX();
     error stHYPEWithdrawalModule__OnlySTEXOrOwner();
+    error stHYPEWithdrawalModule__constructor_InvalidLendingPoolYieldToken();
     error stHYPEWithdrawalModule__claim_alreadyClaimed();
     error stHYPEWithdrawalModule__claim_cannotYetClaim();
     error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
     error stHYPEWithdrawalModule__setSTEX_AlreadySet();
+    error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
 
     /**
      *
@@ -120,6 +123,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // _lendingPool can be zero address, in case it is not set
         if (_overseer == address(0) || _owner == address(0)) {
             revert stHYPEWithdrawalModule__ZeroAddress();
+        }
+
+        // If _lendingPool is set, _lendingPoolYieldToken must also be set
+        if (_lendingPool != address(0) && _lendingPoolYieldToken == address(0)) {
+            revert stHYPEWithdrawalModule__constructor_InvalidLendingPoolYieldToken();
         }
 
         overseer = _overseer;
@@ -251,24 +259,35 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     }
 
     /**
-     * @notice This function gets called after an LP burns its LP tokens,
-     *         in order to withdraw `token1` amounts from the lending protocol.
+     * @notice This function gets called by either:
+     *         - AMM, after an LP burns its LP tokens,
+     *           in order to withdraw `token1` amounts from the lending protocol.
+     *         - `owner`, to withdraw `token1` from lending protocol back into pool.
      * @dev Only callable by the AMM or `owner`.
-     * @dev `owner` can only withdraw from lending pool into AMM's Sovereign Pool.
-     * @param _amountToken1 Amount of token1 which is due to `_recipient`.
-     * @param _recipient Address which should receive `_amountToken1` of `token1`.
+     * @param _amountToken1 Amount of token1 which is due to `_recipient` or pool.
+     * @param _recipient Address which should receive `_amountToken1` of `token1`,
+     *                   only relevant if msg.sender == AMM.
      */
     function withdrawToken1FromLendingPool(uint256 _amountToken1, address _recipient)
         external
         override
         onlySTEXOrOwner
         nonReentrant
+        returns (uint256 amountToken1Withdrawn)
     {
-        if (lendingPool == address(0)) return;
+        if (lendingPool == address(0)) return 0;
+        if (_amountToken1 == 0) return 0;
 
-        IPool(lendingPool).withdraw(
-            ISTEXAMM(stex).token1(), _amountToken1, msg.sender == stex ? _recipient : ISTEXAMM(stex).pool()
-        );
+        address recipient = msg.sender == stex ? _recipient : ISTEXAMM(stex).pool();
+        address token1 = ISTEXAMM(stex).token1();
+
+        uint256 preBalance = ERC20(token1).balanceOf(recipient);
+        amountToken1Withdrawn = IPool(lendingPool).withdraw(token1, _amountToken1, recipient);
+        uint256 postBalance = ERC20(token1).balanceOf(recipient);
+        // Ensure that recipient gets at least `_amountToken1` worth of token1
+        if (postBalance - preBalance < _amountToken1) {
+            revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
+        }
     }
 
     /**

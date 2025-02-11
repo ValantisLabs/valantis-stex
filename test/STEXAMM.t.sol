@@ -69,7 +69,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModule)
+            address(withdrawalModule),
+            0
         );
         withdrawalModule.setSTEX(address(stex));
         assertEq(withdrawalModule.stex(), address(stex));
@@ -125,7 +126,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -138,7 +140,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -151,7 +154,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -164,7 +168,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -177,7 +182,8 @@ contract STEXAMMTest is Test {
             address(0),
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -190,7 +196,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             address(0),
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new STEXAMM(
@@ -203,7 +210,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             address(0),
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -216,7 +224,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(0)
+            address(0),
+            0
         );
 
         STEXAMM stexDeployment = new STEXAMM(
@@ -229,7 +238,8 @@ contract STEXAMMTest is Test {
             poolFeeRecipient1,
             poolFeeRecipient2,
             owner,
-            address(withdrawalModuleDeployment)
+            address(withdrawalModuleDeployment),
+            0
         );
         assertEq(stexDeployment.token0(), address(token0));
         assertEq(stexDeployment.token1(), address(weth));
@@ -748,6 +758,20 @@ contract STEXAMMTest is Test {
         vm.startPrank(address(withdrawalModule));
 
         stex.unstakeToken0Reserves();
+    }
+
+    function testSupplyToken1Reserves() public {
+        uint256 amount = 1 ether;
+
+        vm.expectRevert(STEXAMM.STEXAMM__OnlyWithdrawalModule.selector);
+        stex.supplyToken1Reserves(amount);
+
+        _addPoolReserves(0, 10 ether);
+
+        vm.startPrank(address(withdrawalModule));
+
+        stex.supplyToken1Reserves(amount);
+        assertEq(weth.balanceOf(address(withdrawalModule)), amount);
     }
 
     function testGetLiquidityQuote() public view {

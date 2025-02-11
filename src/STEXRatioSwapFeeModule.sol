@@ -98,11 +98,11 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             FeeParams memory feeParamsCache = feeParams;
             uint256 feeInBips;
 
-            if (reserve1 == 0) {
+            uint256 reserve1Total = reserve1 + withdrawalModuleInterface.amountToken1LendingPool();
+
+            if (reserve1Total == 0) {
                 revert STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
             }
-
-            uint256 reserve1Total = reserve1 + withdrawalModuleInterface.amountToken1LendingPool();
 
             uint256 ratioBips = (amount0Total * BIPS) / reserve1Total;
 
