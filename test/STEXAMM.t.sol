@@ -620,6 +620,7 @@ contract STEXAMMTest is Test {
 
         token0.mint{value: 1e16}(address(pool));
 
+        // transfer WETH reserves to pool, and then into lending protocol
         weth.transfer(address(pool), 2 ether);
         withdrawalModule.supplyToken1ToLendingPool(2 ether);
         assertEq(withdrawalModule.amountToken1LendingPool(), 2 ether);
@@ -629,7 +630,20 @@ contract STEXAMMTest is Test {
 
         vm.startPrank(recipient);
 
-        stex.withdraw(shares, 0, 0, block.timestamp, recipient, true, true);
+        address withdrawRecipient = makeAddr("WITHDRAW_RECIPIENT");
+
+        uint256 snapshot = vm.snapshotState();
+
+        (uint256 amount0, uint256 amount1) =
+            stex.withdraw(shares, 0, 0, block.timestamp, withdrawRecipient, false, true);
+        assertEq(amount0, 0);
+        assertEq(weth.balanceOf(withdrawRecipient), amount1);
+
+        vm.revertToState(snapshot);
+
+        (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, withdrawRecipient, true, true);
+        assertEq(amount0, 0);
+        assertEq(withdrawRecipient.balance, amount1);
     }
 
     function testWithdraw__InstantWithdrawal() public {
