@@ -750,6 +750,59 @@ contract STEXAMMTest is Test {
         assertApproxEqAbs(token0.sharesToAssets(amountOut), 1 ether, 1);
     }
 
+    function testSwap__SplitAmountVsFullAmount() public {
+        address recipient = makeAddr("RECIPIENT");
+        _setSwapFeeParams(3000, 5000, 1, 30);
+
+        _addPoolReserves(0, 30 ether);
+
+        uint256 snapshot = vm.snapshotState();
+        uint256 amountOutTotalSplitSwaps;
+
+        // We will test two scenarios:
+        // two split swaps, each with amountIn = 5 eth
+        // one swap with full amountIn = 10 eth
+
+        // token0 -> token1 split amount swap 1/2
+        SovereignPoolSwapParams memory params;
+        params.isZeroToOne = true;
+        params.amountIn = 5 ether;
+        params.deadline = block.timestamp;
+        params.swapTokenOut = address(weth);
+        params.recipient = recipient;
+
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
+        assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
+        assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
+        assertEq(amountInUsed, 5 ether);
+        assertEq(amountOut, amountOutEstimate);
+        SwapFeeModuleData memory swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
+        amountOutTotalSplitSwaps += amountOut;
+
+        // token0 -> token1 split amount swap 2/2
+        params.amountIn = 5 ether;
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertEq(amountInUsed, 5 ether);
+        swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
+        amountOutTotalSplitSwaps += amountOut;
+
+        vm.revertToState(snapshot);
+
+        // Test token0 -> token1 swap with full amount
+        params.amountIn = 10 ether;
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        (amountInUsed, amountOut) = pool.swap(params);
+        assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
+        assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
+        assertEq(amountOut, amountOutEstimate);
+        swapFeeData = swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
+        // Split swaps yields strictly worse trade execution
+        assertLt(amountOutTotalSplitSwaps, amountOut);
+    }
+
     function testClaimPoolManagerFees() public {
         // Set 1% pool manager fee
         vm.prank(owner);
