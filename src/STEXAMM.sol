@@ -68,7 +68,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
     uint256 private constant BIPS = 10_000;
-    uint256 private constant MINIMUM_LIQUIDITY = 1e9;
+    uint256 private constant MINIMUM_LIQUIDITY = 1e3;
 
     uint256 private constant MIN_TIMELOCK_DELAY = 3 days;
     uint256 private constant MAX_TIMELOCK_DELAY = 7 days;

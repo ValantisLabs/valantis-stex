@@ -434,32 +434,32 @@ contract STEXAMMTest is Test {
         // Test first deposit
 
         vm.expectRevert();
-        stex.deposit(1e9 - 1, 0, block.timestamp, recipient);
+        stex.deposit(1e3 - 1, 0, block.timestamp, recipient);
 
         vm.expectRevert(STEXAMM.STEXAMM__deposit_lessThanMinShares.selector);
         stex.deposit(1e10, 1e10, block.timestamp, recipient);
 
         vm.expectRevert(STEXAMM.STEXAMM__deposit_zeroShares.selector);
-        stex.deposit(1e9, 0, block.timestamp, recipient);
+        stex.deposit(1e3, 0, block.timestamp, recipient);
 
         weth.approve(address(stex), type(uint256).max);
 
-        uint256 shares = stex.deposit(1e9 + 1, 1, block.timestamp, recipient);
+        uint256 shares = stex.deposit(1e3 + 1, 1, block.timestamp, recipient);
         assertEq(shares, 1);
-        assertEq(stex.balanceOf(address(1)), 1e9);
+        assertEq(stex.balanceOf(address(1)), 1e3);
         assertEq(stex.balanceOf(recipient), 1);
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
-        assertEq(reserve1, 1e9 + 1);
+        assertEq(reserve1, 1e3 + 1);
 
         // Test normal deposit
 
         shares = stex.deposit(amount, 0, block.timestamp, recipient);
-        assertEq(stex.balanceOf(address(1)), 1e9);
+        assertEq(stex.balanceOf(address(1)), 1e3);
         assertEq(stex.balanceOf(recipient), shares + 1);
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
-        assertEq(reserve1, amount + 1e9 + 1);
+        assertEq(reserve1, amount + 1e3 + 1);
     }
 
     function testDeposit__FromNativeToken() public {
@@ -550,12 +550,12 @@ contract STEXAMMTest is Test {
 
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
-        assertEq(reserve1, 10e18 + 1e9 + 1);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
 
         token0.mint{value: 10e18}(address(pool));
 
         (reserve0, reserve1) = pool.getReserves();
-        assertEq(reserve1, 10e18 + 1e9 + 1);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
         //assertEq(reserve0, withdrawalModule.convertToToken0(10e18));
 
         uint256 shares = stex.balanceOf(recipient);
@@ -655,12 +655,12 @@ contract STEXAMMTest is Test {
 
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
-        assertEq(reserve1, 10e18 + 1e9 + 1);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
 
         token0.mint{value: 1e16}(address(pool));
 
         (reserve0, reserve1) = pool.getReserves();
-        assertEq(reserve1, 10e18 + 1e9 + 1);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
 
         uint256 shares = stex.balanceOf(recipient) / 2;
         assertGt(shares, 0);
