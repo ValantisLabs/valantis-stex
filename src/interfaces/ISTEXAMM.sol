@@ -19,7 +19,9 @@ interface ISTEXAMM is ISovereignALM {
 
     event Deposit(address indexed sender, address indexed recipient, uint256 amountToken1, uint256 shares);
 
-    event Withdraw(address indexed sender, uint256 amountToken0, uint256 amountToken1, uint256 shares);
+    event Withdraw(
+        address indexed sender, address indexed recipient, uint256 amountToken0, uint256 amountToken1, uint256 shares
+    );
 
     function pool() external view returns (address);
 
@@ -44,6 +46,8 @@ interface ISTEXAMM is ISovereignALM {
     function claimPoolManagerFees() external;
 
     function unstakeToken0Reserves() external;
+
+    function supplyToken1Reserves(uint256 _amount1) external;
 
     function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
         external
