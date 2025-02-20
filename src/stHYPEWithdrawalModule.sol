@@ -48,6 +48,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__claim_cannotYetClaim();
     error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
     error stHYPEWithdrawalModule__setSTEX_AlreadySet();
+    error stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientRedeemable();
+    error stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientRedeemed();
     error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
 
     /**
@@ -318,14 +320,23 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         address token0 = stexInterface.token0();
         uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
-
+        uint256 maxRedeemable = IOverseer(overseer).maxRedeemable();
+        if (amountToken0 > maxRedeemable) {
+            revert stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientRedeemable();
+        }
         _amountToken0PendingUnstaking += amountToken0;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
         // WARNING: token0 balances represent shares,
         // hence the equivalent amount of token1 to be received is not 1:1
-        IOverseer(overseer).burn(address(this), amountToken0);
+        uint256 preBalance = address(this).balance;
+        IERC20(token0).forceApprove(overseer, amountToken0);
+        IOverseer(overseer).burnAndRedeemIfPossible(address(this), amountToken0, "");
+        uint256 postBalance = address(this).balance;
+        if (postBalance - preBalance != amountToken0) {
+            revert stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientRedeemed();
+        }
     }
 
     /**
