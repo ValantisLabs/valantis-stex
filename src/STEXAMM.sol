@@ -219,7 +219,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @return amountOut Amount of output token received.
      */
     function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
-        if (_tokenIn != token0 && _tokenIn != token1) return 0;
+        if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) return 0;
 
         SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
             _tokenIn, address(0), _amountIn, address(0), new bytes(0)

@@ -10,6 +10,7 @@ import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
+import {AaveLendingModule} from "src/AaveLendingModule.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 contract stHYPEWithdrawalModuleTest is Test {
@@ -21,6 +22,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     MockOverseer overseer;
 
     MockLendingPool lendingPool;
+    AaveLendingModule lendingModule;
 
     address private _pool = makeAddr("MOCK_POOL");
 
@@ -36,11 +38,16 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(lendingPool.underlyingAsset(), address(weth));
         assertEq(lendingPool.lendingPoolYieldToken(), address(lendingPool));
 
-        withdrawalModule = new stHYPEWithdrawalModule(
-            address(overseer), address(lendingPool), lendingPool.lendingPoolYieldToken(), owner
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), owner);
+        lendingModule = new AaveLendingModule(
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
-        assertEq(withdrawalModule.lendingPool(), address(lendingPool));
-        assertEq(withdrawalModule.lendingPoolYieldToken(), address(lendingPool));
+
+        vm.startPrank(owner);
+        withdrawalModule.setLendingModule(address(lendingModule));
+        vm.stopPrank();
+
+        assertEq(address(withdrawalModule.lendingModule()), address(lendingModule));
         assertEq(withdrawalModule.owner(), owner);
 
         vm.startPrank(owner);
@@ -84,23 +91,15 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
-        new stHYPEWithdrawalModule(address(0), address(0), address(0), address(this));
+        new stHYPEWithdrawalModule(address(0), address(this));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(0));
+        new stHYPEWithdrawalModule(address(overseer), address(0));
 
-        // If lendingPool is specified, lendingPoolYieldToken cannot be zero address
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__constructor_InvalidLendingPoolYieldToken.selector
-        );
-        new stHYPEWithdrawalModule(address(overseer), address(lendingPool), address(0), address(this));
-
-        withdrawalModuleDeployment =
-            new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
+        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
-        assertEq(withdrawalModuleDeployment.lendingPool(), address(0));
-        assertEq(withdrawalModuleDeployment.lendingPoolYieldToken(), address(0));
+        assertEq(address(withdrawalModuleDeployment.lendingModule()), address(0));
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
     }
 
