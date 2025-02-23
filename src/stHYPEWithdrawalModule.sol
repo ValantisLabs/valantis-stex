@@ -15,7 +15,7 @@ import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {ILendingModule} from "./interfaces/ILendingModule.sol";
-import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
+import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalModuleStructs.sol";
 
 /**
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
@@ -34,6 +34,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     event STEXSet(address stex);
     event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
     event LPWithdrawalRequestClaimed(uint256 id);
+    event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
+    event LendingModuleProposalCancelled();
+    event LendingModuleSet(address lendingModule);
+    event AmountSuppliedToLendingModule(uint256 amount);
+    event AmountWithdrawnFromLendingModule(uint256 amount);
 
     /**
      *
@@ -48,6 +53,20 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
     error stHYPEWithdrawalModule__setSTEX_AlreadySet();
     error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
+    error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
+    error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh();
+    error stHYPEWithdrawalModule__cancelLendingModuleProposal_ProposalNotActive();
+    error stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
+    error stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
+    error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
+
+    /**
+     *
+     *  CONSTANTS
+     *
+     */
+    uint256 private constant MIN_TIMELOCK_DELAY = 3 days;
+    uint256 private constant MAX_TIMELOCK_DELAY = 7 days;
 
     /**
      *
@@ -92,14 +111,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     uint256 public idLPWithdrawal;
 
     /**
-     * @notice Unique identifier for each burn request.
-     */
-    uint256 public burnId;
-
-    /**
      * @notice mapping from `idLPWithdrawal` to its respective `LPWithdrawalRequest` data.
      */
     mapping(uint256 => LPWithdrawalRequest) public LPWithdrawals;
+
+    /**
+     * @notice Address of proposed lending module to interact with lending protocol.
+     */
+    LendingModuleProposal public lendingModuleProposal;
 
     /**
      * @notice Address of lending module to interact with lending protocol.
@@ -188,7 +207,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     }
 
     /**
-     * @notice Returns amount of token1 owned by this position in the lending pool, including any yield accrued.
+     * @notice Returns amount of token1 owned in the lending module.
      */
     function amountToken1LendingPool() public view override returns (uint256) {
         if (address(lendingModule) != address(0)) {
@@ -222,12 +241,39 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         emit STEXSet(_stex);
     }
 
-    function setLendingModule(address _lendingModule) external onlyOwner {
+    function proposeLendingModule(address _lendingModule, uint256 _timelockDelay) external onlyOwner {
+        _verifyTimelockDelay(_timelockDelay);
+
+        if (lendingModuleProposal.startTimestamp > 0) {
+            revert stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
+        }
+
+        lendingModuleProposal =
+            LendingModuleProposal({lendingModule: _lendingModule, startTimestamp: block.timestamp + _timelockDelay});
+        emit LendingModuleProposed(_lendingModule, block.timestamp + _timelockDelay);
+    }
+
+    function cancelLendingModuleProposal() external onlyOwner {
+        emit LendingModuleProposalCancelled();
+        delete lendingModuleProposal;
+    }
+
+    function setProposedLendingModule() external onlyOwner {
+        if (lendingModuleProposal.startTimestamp > block.timestamp) {
+            revert stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
+        }
+
+        if (lendingModuleProposal.startTimestamp == 0) {
+            revert stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
+        }
+
         if (address(lendingModule) != address(0)) {
             lendingModule.withdraw(lendingModule.assetBalance(), address(this));
         }
 
-        lendingModule = ILendingModule(_lendingModule);
+        lendingModule = ILendingModule(lendingModuleProposal.lendingModule);
+        delete lendingModuleProposal;
+        emit LendingModuleSet(address(lendingModule));
     }
 
     /**
@@ -280,10 +326,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         override
         onlySTEXOrOwner
         nonReentrant
-        returns (uint256 amountToken1Withdrawn)
     {
-        if (address(lendingModule) == address(0)) return 0;
-        if (_amountToken1 == 0) return 0;
+        if (address(lendingModule) == address(0)) return;
+        if (_amountToken1 == 0) return;
 
         address recipient = msg.sender == stex ? _recipient : ISTEXAMM(stex).pool();
         address token1 = ISTEXAMM(stex).token1();
@@ -295,6 +340,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         if (postBalance - preBalance < _amountToken1) {
             revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
         }
+        emit AmountWithdrawnFromLendingModule(_amountToken1);
     }
 
     /**
@@ -313,6 +359,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         IWETH9(token1).forceApprove(address(lendingModule), _amountToken1);
 
         lendingModule.deposit(_amountToken1);
+        emit AmountSuppliedToLendingModule(_amountToken1);
     }
 
     /**
@@ -418,5 +465,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         // Send equivalent amount of native token to recipient
         Address.sendValue(payable(request.recipient), request.amountToken1);
+    }
+
+    function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
+        if (_timelockDelay < MIN_TIMELOCK_DELAY) {
+            revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
+        }
+
+        if (_timelockDelay > MAX_TIMELOCK_DELAY) {
+            revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh();
+        }
     }
 }

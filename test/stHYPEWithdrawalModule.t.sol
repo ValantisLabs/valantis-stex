@@ -44,7 +44,9 @@ contract stHYPEWithdrawalModuleTest is Test {
         );
 
         vm.startPrank(owner);
-        withdrawalModule.setLendingModule(address(lendingModule));
+        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        vm.warp(block.timestamp + 3 days);
+        withdrawalModule.setProposedLendingModule();
         vm.stopPrank();
 
         assertEq(address(withdrawalModule.lendingModule()), address(lendingModule));
@@ -299,6 +301,74 @@ contract stHYPEWithdrawalModuleTest is Test {
         // User 2 can claim, similar scenario to user 1
         withdrawalModule.claim(1);
         assertGt(recipient2.balance, 0);
+    }
+
+    function testLendingModuleProposal() public {
+        address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow.selector);
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days - 1);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh.selector);
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 7 days + 1);
+
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+        (address lendingModuleProposed, uint256 startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, lendingModuleMock);
+        assertEq(startTimestamp, block.timestamp + 3 days);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive.selector
+        );
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+
+        vm.stopPrank();
+
+        uint256 snapshot = vm.snapshotState();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.cancelLendingModuleProposal();
+
+        vm.startPrank(owner);
+
+        withdrawalModule.cancelLendingModuleProposal();
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.stopPrank();
+
+        vm.revertToState(snapshot);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.setProposedLendingModule();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive.selector
+        );
+        withdrawalModule.setProposedLendingModule();
+
+        vm.warp(block.timestamp + 3 days);
+
+        withdrawalModule.setProposedLendingModule();
+        assertEq(address(withdrawalModule.lendingModule()), lendingModuleMock);
+
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal.selector
+        );
+        withdrawalModule.setProposedLendingModule();
+
+        vm.stopPrank();
     }
 
     function _burnToken0AfterWithdraw(uint256 amountToken0, address recipient) private {

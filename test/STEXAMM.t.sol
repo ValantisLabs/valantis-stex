@@ -68,7 +68,10 @@ contract STEXAMMTest is Test {
             address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
 
-        withdrawalModule.setLendingModule(address(lendingModule));
+        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        vm.warp(block.timestamp + 3 days);
+        withdrawalModule.setProposedLendingModule();
+
         swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
 
