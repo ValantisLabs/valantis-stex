@@ -366,7 +366,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             revert STEXAMM__unstakeToken0Reserves_amountTooHigh();
         }
         poolInterface.withdrawLiquidity(_unstakeAmountToken0, 0, msg.sender, msg.sender, new bytes(0));
-        emit Token0ReservesUnstaked(reserve0);
+        emit Token0ReservesUnstaked(_unstakeAmountToken0);
     }
 
     /**
