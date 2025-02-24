@@ -413,7 +413,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function _unstakeToken0ReservesPartial(uint256 amount, uint256 amountToken0Unstake) private {
-        vm.assume(amountToken0Unstake < amount);
+        vm.assume(amountToken0Unstake <= amount);
         uint256 initialToken0Reserves = _token0.balanceOf(address(this));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.unstakeToken0Reserves(initialToken0Reserves);

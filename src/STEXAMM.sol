@@ -20,6 +20,7 @@ import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
 import {SwapFeeModuleProposal} from "./structs/STEXAMMStructs.sol";
 
+import {console} from "forge-std/console.sol";
 /**
  * @title Stake Exchange AMM.
  */
@@ -42,6 +43,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__setProposedSwapFeeModule_InactiveProposal();
     error STEXAMM__setProposedSwapFeeModule_Timelock();
     error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
+    error STEXAMM__unstakeToken0Reserves_amountTooHigh();
     error STEXAMM__withdraw_insufficientToken0Withdrawn();
     error STEXAMM__withdraw_insufficientToken1Withdrawn();
     error STEXAMM__withdraw_zeroShares();
@@ -357,12 +359,14 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *         and send those to the staking protocol's native withdrawal queue.
      * @dev Only callable by `withdrawalModule`.
      */
-    function unstakeToken0Reserves() external override onlyWithdrawalModule nonReentrant {
+    function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override onlyWithdrawalModule nonReentrant {
         ISovereignPool poolInterface = ISovereignPool(pool);
 
         (uint256 reserve0,) = poolInterface.getReserves();
+        if (_unstakeAmountToken0 > reserve0) {
+            revert STEXAMM__unstakeToken0Reserves_amountTooHigh();
+        }
         poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
-
         emit Token0ReservesUnstaked(reserve0);
     }
 

@@ -853,14 +853,15 @@ contract STEXAMMTest is Test {
     }
 
     function testUnstakeToken0Reserves() public {
+        uint256 amountToken0ReservesInitial = token0.balanceOf(address(stex));
         vm.expectRevert(STEXAMM.STEXAMM__OnlyWithdrawalModule.selector);
-        stex.unstakeToken0Reserves();
+        stex.unstakeToken0Reserves(amountToken0ReservesInitial);
 
         _addPoolReserves(10 ether, 0);
-
+        uint256 amountToken0ReservesFinal = token0.balanceOf(address(stex));
         vm.startPrank(address(withdrawalModule));
 
-        stex.unstakeToken0Reserves();
+        stex.unstakeToken0Reserves(amountToken0ReservesFinal);
     }
 
     function testSupplyToken1Reserves() public {

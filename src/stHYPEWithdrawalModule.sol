@@ -17,6 +17,7 @@ import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {ILendingModule} from "./interfaces/ILendingModule.sol";
 import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalModuleStructs.sol";
 
+import {console} from "forge-std/console.sol";
 /**
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
  *         and modular, upgradeable integration with a lending protocol via the Lending Module Interface.
@@ -59,6 +60,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
+    error InsufficientReserves();
 
     /**
      *
@@ -366,9 +368,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Claims pool's accummulated token0 reserves and executes an unstaking request (burn) via `overseer`.
      * @dev Only callable by `owner`.
      */
-    function unstakeToken0Reserves(uint256 _amountToken0) external override nonReentrant onlyOwner {
+    function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override nonReentrant onlyOwner {
         ISTEXAMM stexInterface = ISTEXAMM(stex);
-        stexInterface.unstakeToken0Reserves();
+        stexInterface.unstakeToken0Reserves(_unstakeAmountToken0);
 
         address token0 = stexInterface.token0();
         uint256 amountToken0 = IstHYPE(token0).balanceOf(address(this));
