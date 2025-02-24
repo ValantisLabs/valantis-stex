@@ -42,6 +42,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__setProposedSwapFeeModule_InactiveProposal();
     error STEXAMM__setProposedSwapFeeModule_Timelock();
     error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
+    error STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
     error STEXAMM__unstakeToken0Reserves_amountTooHigh();
     error STEXAMM__withdraw_insufficientToken0Withdrawn();
     error STEXAMM__withdraw_insufficientToken1Withdrawn();
@@ -360,6 +361,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _unstakeAmountToken0 Amount of `token0` reserves to unstake.
      */
     function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override onlyWithdrawalModule nonReentrant {
+        if (_unstakeAmountToken0 == 0) {
+            revert STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
+        }
         ISovereignPool poolInterface = ISovereignPool(pool);
 
         (uint256 reserve0,) = poolInterface.getReserves();
