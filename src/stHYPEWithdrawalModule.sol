@@ -17,7 +17,6 @@ import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {ILendingModule} from "./interfaces/ILendingModule.sol";
 import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalModuleStructs.sol";
 
-import {console} from "forge-std/console.sol";
 /**
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
  *         and modular, upgradeable integration with a lending protocol via the Lending Module Interface.
