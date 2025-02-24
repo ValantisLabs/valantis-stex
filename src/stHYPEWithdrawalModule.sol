@@ -211,7 +211,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     function amountToken1LendingPool() public view override returns (uint256) {
         if (address(lendingModule) != address(0)) {
-            // Returns Lending Module's balance of yield token in the integrated lending protocol
+            // Returns balance of underlying token (token1) in the Lending Module's lending protocol position
             return lendingModule.assetBalance();
         } else {
             return 0;
