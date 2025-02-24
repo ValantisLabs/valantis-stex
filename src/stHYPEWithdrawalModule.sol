@@ -19,7 +19,7 @@ import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalMo
 
 /**
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
- *         and AAVE V3 compatible lending protocol.
+ *         and modular, upgradeable integration with a lending protocol via the Lending Module Interface.
  */
 contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
     using SafeCast for uint256;
@@ -211,7 +211,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     function amountToken1LendingPool() public view override returns (uint256) {
         if (address(lendingModule) != address(0)) {
-            // Returns balance of aToken
+            // Returns Lending Module's balance of yield token in the integrated lending protocol
             return lendingModule.assetBalance();
         } else {
             return 0;
