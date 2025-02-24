@@ -59,7 +59,6 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
-    error InsufficientReserves();
 
     /**
      *
