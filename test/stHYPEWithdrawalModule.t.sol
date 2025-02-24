@@ -394,14 +394,15 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function _unstakeToken0Reserves(uint256 amount) private {
+        uint256 initialToken0Reserves = _token0.balanceOf(address(this));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        withdrawalModule.unstakeToken0Reserves();
+        withdrawalModule.unstakeToken0Reserves(initialToken0Reserves);
 
         uint256 preAmountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
         _token0.transfer(address(withdrawalModule), amount);
 
         vm.startPrank(owner);
-        withdrawalModule.unstakeToken0Reserves();
+        withdrawalModule.unstakeToken0Reserves(_token0.balanceOf(address(this)));
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), preAmountToken0PendingUnstaking + amount);
 
         vm.stopPrank();
