@@ -20,7 +20,6 @@ import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
 import {SwapFeeModuleProposal} from "./structs/STEXAMMStructs.sol";
 
-import {console} from "forge-std/console.sol";
 /**
  * @title Stake Exchange AMM.
  */
@@ -367,6 +366,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             revert STEXAMM__unstakeToken0Reserves_amountTooHigh();
         }
         poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
+        
         emit Token0ReservesUnstaked(reserve0);
     }
 
