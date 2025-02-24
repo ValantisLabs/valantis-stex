@@ -49,8 +49,11 @@ contract MockLendingPool is IPool {
 
     function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
         require(asset == underlyingAsset, "unexpected underlying asset");
-        require(amount != 0, "amount cannot be zero");
         require(to != address(0), "to cannot be zero");
+
+        if (amount == 0) {
+            return 0;
+        }
 
         uint256 maxShares = _shares[msg.sender];
         uint256 underlyingBalance = ERC20(underlyingAsset).balanceOf(address(this));

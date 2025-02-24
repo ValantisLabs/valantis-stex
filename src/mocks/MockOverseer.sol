@@ -15,7 +15,11 @@ contract MockOverseer is IOverseer {
 
     receive() external payable {}
 
-    function burn(address to, uint256 amount) external override returns (uint256) {
+    function burnAndRedeemIfPossible(address to, uint256 amount, string memory /*_communityCode*/ )
+        external
+        override
+        returns (uint256)
+    {
         require(to != address(0), "invalid address");
         require(amount > 0, "invalid amount");
 

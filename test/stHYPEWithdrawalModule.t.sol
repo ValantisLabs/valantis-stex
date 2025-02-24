@@ -10,6 +10,7 @@ import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
+import {AaveLendingModule} from "src/AaveLendingModule.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 contract stHYPEWithdrawalModuleTest is Test {
@@ -21,6 +22,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     MockOverseer overseer;
 
     MockLendingPool lendingPool;
+    AaveLendingModule lendingModule;
 
     address private _pool = makeAddr("MOCK_POOL");
 
@@ -36,11 +38,18 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(lendingPool.underlyingAsset(), address(weth));
         assertEq(lendingPool.lendingPoolYieldToken(), address(lendingPool));
 
-        withdrawalModule = new stHYPEWithdrawalModule(
-            address(overseer), address(lendingPool), lendingPool.lendingPoolYieldToken(), owner
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), owner);
+        lendingModule = new AaveLendingModule(
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
-        assertEq(withdrawalModule.lendingPool(), address(lendingPool));
-        assertEq(withdrawalModule.lendingPoolYieldToken(), address(lendingPool));
+
+        vm.startPrank(owner);
+        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        vm.warp(block.timestamp + 3 days);
+        withdrawalModule.setProposedLendingModule();
+        vm.stopPrank();
+
+        assertEq(address(withdrawalModule.lendingModule()), address(lendingModule));
         assertEq(withdrawalModule.owner(), owner);
 
         vm.startPrank(owner);
@@ -84,23 +93,15 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
-        new stHYPEWithdrawalModule(address(0), address(0), address(0), address(this));
+        new stHYPEWithdrawalModule(address(0), address(this));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(0));
+        new stHYPEWithdrawalModule(address(overseer), address(0));
 
-        // If lendingPool is specified, lendingPoolYieldToken cannot be zero address
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__constructor_InvalidLendingPoolYieldToken.selector
-        );
-        new stHYPEWithdrawalModule(address(overseer), address(lendingPool), address(0), address(this));
-
-        withdrawalModuleDeployment =
-            new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
+        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
-        assertEq(withdrawalModuleDeployment.lendingPool(), address(0));
-        assertEq(withdrawalModuleDeployment.lendingPoolYieldToken(), address(0));
+        assertEq(address(withdrawalModuleDeployment.lendingModule()), address(0));
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
     }
 
@@ -300,6 +301,74 @@ contract stHYPEWithdrawalModuleTest is Test {
         // User 2 can claim, similar scenario to user 1
         withdrawalModule.claim(1);
         assertGt(recipient2.balance, 0);
+    }
+
+    function testLendingModuleProposal() public {
+        address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow.selector);
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days - 1);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh.selector);
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 7 days + 1);
+
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+        (address lendingModuleProposed, uint256 startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, lendingModuleMock);
+        assertEq(startTimestamp, block.timestamp + 3 days);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive.selector
+        );
+        withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+
+        vm.stopPrank();
+
+        uint256 snapshot = vm.snapshotState();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.cancelLendingModuleProposal();
+
+        vm.startPrank(owner);
+
+        withdrawalModule.cancelLendingModuleProposal();
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.stopPrank();
+
+        vm.revertToState(snapshot);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.setProposedLendingModule();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive.selector
+        );
+        withdrawalModule.setProposedLendingModule();
+
+        vm.warp(block.timestamp + 3 days);
+
+        withdrawalModule.setProposedLendingModule();
+        assertEq(address(withdrawalModule.lendingModule()), lendingModuleMock);
+
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
+        assertEq(lendingModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.expectRevert(
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal.selector
+        );
+        withdrawalModule.setProposedLendingModule();
+
+        vm.stopPrank();
     }
 
     function _burnToken0AfterWithdraw(uint256 amountToken0, address recipient) private {

@@ -6,3 +6,8 @@ struct LPWithdrawalRequest {
     uint96 amountToken1;
     uint256 cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint;
 }
+
+struct LendingModuleProposal {
+    address lendingModule;
+    uint256 startTimestamp;
+}

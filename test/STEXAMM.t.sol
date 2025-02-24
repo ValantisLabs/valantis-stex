@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.25;
 
+import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {ProtocolFactory} from "@valantis-core/protocol-factory/ProtocolFactory.sol";
@@ -19,6 +20,7 @@ import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
 import {MockStHype} from "src/mocks/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
+import {AaveLendingModule} from "src/AaveLendingModule.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
 import {FeeParams} from "src/structs/STEXRatioSwapFeeModuleStructs.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
@@ -38,6 +40,7 @@ contract STEXAMMTest is Test {
     MockOverseer overseer;
 
     MockLendingPool lendingPool;
+    AaveLendingModule lendingModule;
 
     address public poolFeeRecipient1 = makeAddr("POOL_FEE_RECIPIENT_1");
     address public poolFeeRecipient2 = makeAddr("POOL_FEE_RECIPIENT_2");
@@ -59,9 +62,15 @@ contract STEXAMMTest is Test {
 
         lendingPool = new MockLendingPool(address(weth));
 
-        withdrawalModule = new stHYPEWithdrawalModule(
-            address(overseer), address(lendingPool), lendingPool.lendingPoolYieldToken(), address(this)
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
+
+        lendingModule = new AaveLendingModule(
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
+
+        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        vm.warp(block.timestamp + 3 days);
+        withdrawalModule.setProposedLendingModule();
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
@@ -111,8 +120,7 @@ contract STEXAMMTest is Test {
     }
 
     function testDeploy() public {
-        stHYPEWithdrawalModule withdrawalModuleDeployment =
-            new stHYPEWithdrawalModule(address(overseer), address(0), address(0), address(this));
+        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
