@@ -27,7 +27,7 @@ interface IWithdrawalModule {
 
     function getLPWithdrawals(uint256 _idLPWithdrawal) external view returns (LPWithdrawalRequest memory);
 
-    function unstakeToken0Reserves() external;
+    function unstakeToken0Reserves(uint256 _amountToken0) external;
 
     function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient) external;
 

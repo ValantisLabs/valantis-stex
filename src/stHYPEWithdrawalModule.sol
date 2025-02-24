@@ -366,7 +366,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Claims pool's accummulated token0 reserves and executes an unstaking request (burn) via `overseer`.
      * @dev Only callable by `owner`.
      */
-    function unstakeToken0Reserves() external override nonReentrant onlyOwner {
+    function unstakeToken0Reserves(uint256 _amountToken0) external override nonReentrant onlyOwner {
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         stexInterface.unstakeToken0Reserves();
 
