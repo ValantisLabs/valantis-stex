@@ -42,6 +42,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__setProposedSwapFeeModule_InactiveProposal();
     error STEXAMM__setProposedSwapFeeModule_Timelock();
     error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
+    error STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
+    error STEXAMM__unstakeToken0Reserves_amountTooHigh();
     error STEXAMM__withdraw_insufficientToken0Withdrawn();
     error STEXAMM__withdraw_insufficientToken1Withdrawn();
     error STEXAMM__withdraw_zeroShares();
@@ -353,17 +355,23 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     }
 
     /**
-     * @notice Allows the withdrawal module to transfer `token0` reserves from `pool`
+     * @notice Allows the withdrawal module to transfer a portion of `token0` reserves from `pool`
      *         and send those to the staking protocol's native withdrawal queue.
      * @dev Only callable by `withdrawalModule`.
+     * @param _unstakeAmountToken0 Amount of `token0` reserves to unstake.
      */
-    function unstakeToken0Reserves() external override onlyWithdrawalModule nonReentrant {
+    function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override onlyWithdrawalModule nonReentrant {
+        if (_unstakeAmountToken0 == 0) {
+            revert STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
+        }
         ISovereignPool poolInterface = ISovereignPool(pool);
 
         (uint256 reserve0,) = poolInterface.getReserves();
-        poolInterface.withdrawLiquidity(reserve0, 0, msg.sender, msg.sender, new bytes(0));
-
-        emit Token0ReservesUnstaked(reserve0);
+        if (_unstakeAmountToken0 > reserve0) {
+            revert STEXAMM__unstakeToken0Reserves_amountTooHigh();
+        }
+        poolInterface.withdrawLiquidity(_unstakeAmountToken0, 0, msg.sender, msg.sender, new bytes(0));
+        emit Token0ReservesUnstaked(_unstakeAmountToken0);
     }
 
     /**

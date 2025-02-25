@@ -85,7 +85,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         return _pool;
     }
 
-    function unstakeToken0Reserves() external {}
+    function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external {}
 
     function supplyToken1Reserves(uint256 amount) external {
         weth.transfer(msg.sender, amount);
@@ -394,14 +394,16 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function _unstakeToken0Reserves(uint256 amount) private {
+        uint256 initialToken0Reserves = _token0.balanceOf(address(this));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        withdrawalModule.unstakeToken0Reserves();
+        withdrawalModule.unstakeToken0Reserves(initialToken0Reserves);
 
         uint256 preAmountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
         _token0.transfer(address(withdrawalModule), amount);
 
+        uint256 unstakeAmount = _token0.balanceOf(address(this));
         vm.startPrank(owner);
-        withdrawalModule.unstakeToken0Reserves();
+        withdrawalModule.unstakeToken0Reserves(unstakeAmount);
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), preAmountToken0PendingUnstaking + amount);
 
         vm.stopPrank();
