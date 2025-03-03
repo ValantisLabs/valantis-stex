@@ -3,8 +3,8 @@ pragma solidity ^0.8.25;
 
 struct LPWithdrawalRequest {
     address recipient;
-    uint96 amountToken1;
-    uint256 cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint;
+    uint96 shares;
+    uint160 epochId; // Epoch in which this withdrawal request was created
 }
 
 struct LendingModuleProposal {
