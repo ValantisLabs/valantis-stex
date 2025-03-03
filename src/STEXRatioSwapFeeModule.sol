@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
@@ -13,6 +14,8 @@ import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
  * @title Stake Exchange: Reserves Ratio based Swap Fee Module.
  */
 contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
+    using SafeCast for int256;
+
     /**
      *
      *  CUSTOM ERRORS
@@ -89,11 +92,14 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             (uint256 reserve0, uint256 reserve1) = poolInterface.getReserves();
             IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
 
-            uint256 amount0PendingUnstaking = withdrawalModuleInterface.amountToken0PendingUnstaking();
-            uint256 amountToken0PendingLPWithdrawal =
-                withdrawalModuleInterface.convertToToken0(withdrawalModuleInterface.amountToken1PendingLPWithdrawal());
+            int256 amount0Correction = withdrawalModuleInterface.amount0Correction();
 
-            uint256 amount0Total = reserve0 + amount0PendingUnstaking + _amountIn - amountToken0PendingLPWithdrawal;
+            uint256 amount0Total;
+            if (amount0Correction >= 0) {
+                amount0Total = reserve0 + amount0Correction.toUint256() + _amountIn;
+            } else {
+                amount0Total = reserve0 - (-amount0Correction).toUint256() + _amountIn;
+            }
 
             FeeParams memory feeParamsCache = feeParams;
             uint256 feeInBips;

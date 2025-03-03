@@ -45,7 +45,7 @@ interface ISTEXAMM is ISovereignALM {
 
     function claimPoolManagerFees() external;
 
-    function unstakeToken0Reserves() external;
+    function unstakeToken0Reserves(uint256 _amountToken0) external;
 
     function supplyToken1Reserves(uint256 _amount1) external;
 

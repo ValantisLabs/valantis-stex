@@ -6,6 +6,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
+import {IstHYPE} from "./interfaces/IStHYPE.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
@@ -13,6 +14,8 @@ contract STEXLens {
     struct WithdrawCache {
         uint256 reserve0Pool;
         uint256 reserve1Pool;
+        uint256 poolShares;
+        uint256 pendingUnstakingShares;
         uint256 amount1LendingPool;
         uint256 instantWithdrawalFee1;
         uint256 amount1Remaining;
@@ -29,16 +32,21 @@ contract STEXLens {
         }
         IWithdrawalModule withdrawalModule = IWithdrawalModule(stexInterface.withdrawalModule());
         (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
+
+        int256 amount0Correction = withdrawalModule.amount0Correction();
         // Account for token0 in pool (liquid) and pending unstaking (locked)
-        uint256 reserve0Total = reserve0Pool + withdrawalModule.amountToken0PendingUnstaking();
-        // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+        uint256 reserve0Total;
+        if (amount0Correction >= 0) {
+            reserve0Total = reserve0Pool + uint256(amount0Correction);
+        } else {
+            reserve0Total = reserve0Pool - uint256(-amount0Correction);
+        }
+
         // shares calculated in terms of token1
         uint256 shares = Math.mulDiv(
             amount,
             totalSupplyCache,
             reserve1Pool + withdrawalModule.amountToken1LendingPool() + withdrawalModule.convertToToken1(reserve0Total)
-                - reserve1PendingWithdrawal
         );
 
         return shares;
@@ -62,21 +70,27 @@ contract STEXLens {
 
         (cache.reserve0Pool, cache.reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
 
-        // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
-        // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
-        // minus LP amount already pending withdrawal
-        amount0 = Math.mulDiv(
-            cache.reserve0Pool + withdrawalModule.amountToken0PendingUnstaking()
-                - withdrawalModule.convertToToken0(reserve1PendingWithdrawal),
-            shares,
-            totalSupplyCache
-        );
+        {
+            // Calculate pool shares and pending unstaking shares
+            cache.poolShares = Math.mulDiv(
+                IstHYPE(stexInterface.token0()).sharesOf(stexInterface.pool())
+                    - withdrawalModule.amountToken0SharesPendingLPWithdrawal(),
+                shares,
+                totalSupplyCache
+            );
+            cache.pendingUnstakingShares = Math.mulDiv(
+                withdrawalModule.amountToken0SharesPendingUnstaking()
+                    - withdrawalModule.amountToken0SharesUnstakingLPWithdrawal(),
+                shares,
+                totalSupplyCache
+            );
 
-        cache.amount1LendingPool = Math.mulDiv(withdrawalModule.amountToken1LendingPool(), shares, totalSupplyCache);
-        // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
-        // plus pro-rata share of token1 reserves earning yield in lending pool (liquid, assuming lending pool is working correctly)
-        amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, shares, totalSupplyCache);
+            cache.amount1LendingPool = Math.mulDiv(withdrawalModule.amountToken1LendingPool(), shares, totalSupplyCache);
+            // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
+            // plus pro-rata share of token1 reserves earning yield in lending pool (liquid)
+            amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, shares, totalSupplyCache);
+            amount0 = IstHYPE(stexInterface.token0()).sharesToBalance(cache.poolShares + cache.pendingUnstakingShares);
+        }
 
         if (isInstantWithdrawal) {
             uint256 amount1SwapEquivalent = stexInterface.getAmountOut(stexInterface.token0(), amount0);
@@ -96,20 +110,12 @@ contract STEXLens {
 
         LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(idLPWithdrawal);
 
-        if (request.amountToken1 == 0) {
+        if (request.shares == 0) {
             return false;
         }
 
-        // Check if there is enough ETH available to fulfill this request
-        if (withdrawalModule.amountToken1ClaimableLPWithdrawal() < request.amountToken1) {
-            return false;
-        }
-
-        // Check if it is the right time to claim (according to queue priority)
-        if (
-            withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal()
-                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
-        ) {
+        // Check if the epoch exchange rate exists (request hasn't been claimed yet)
+        if (withdrawalModule.epochExchangeRate(request.epochId) == 0) {
             return false;
         }
 
