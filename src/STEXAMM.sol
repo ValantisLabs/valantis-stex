@@ -151,9 +151,14 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         uint256 _token0AbsErrorTolerance
     ) Ownable(_owner) ERC20(_name, _symbol) {
         if (
-            _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
-                || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)
-                || _owner == address(0) || withdrawalModule_ == address(0)
+            _token0 == address(0) ||
+            _token1 == address(0) ||
+            _swapFeeModule == address(0) ||
+            _protocolFactory == address(0) ||
+            _poolFeeRecipient1 == address(0) ||
+            _poolFeeRecipient2 == address(0) ||
+            _owner == address(0) ||
+            withdrawalModule_ == address(0)
         ) revert STEXAMM__ZeroAddress();
 
         SovereignPoolConstructorArgs memory args = SovereignPoolConstructorArgs(
@@ -226,14 +231,28 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _amountIn Amount if `_tokenIn` to swap.
      * @return amountOut Amount of output token received.
      */
-    function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
-        if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) return 0;
+    function getAmountOut(
+        address _tokenIn,
+        uint256 _amountIn
+    ) public view returns (uint256 amountOut) {
+        if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0)
+            return 0;
 
-        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
-            _tokenIn, address(0), _amountIn, address(0), new bytes(0)
+        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(
+            swapFeeModule
+        ).getSwapFeeInBips(
+                _tokenIn,
+                address(0),
+                _amountIn,
+                address(0),
+                new bytes(0)
+            );
+
+        uint256 amountInWithoutFee = Math.mulDiv(
+            _amountIn,
+            BIPS,
+            BIPS + swapFeeData.feeInBips
         );
-
-        uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
         bool isZeroToOne = _tokenIn == token0;
         // token0 balances might not be 1:1 mapped to token1 balances,
         // hence we rely on the withdrawalModule to convert it (e.g., if token0 balances represent shares)
@@ -257,7 +276,10 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _swapFeeModule Address of new Swap Fee Module to set.
      * @param _timelockDelay Timelock delay in seconds. Must be in range [3 days, 7 days].
      */
-    function proposeSwapFeeModule(address _swapFeeModule, uint256 _timelockDelay) external override onlyOwner {
+    function proposeSwapFeeModule(
+        address _swapFeeModule,
+        uint256 _timelockDelay
+    ) external override onlyOwner {
         if (_swapFeeModule == address(0)) revert STEXAMM__ZeroAddress();
 
         // An honest `owner` can propose a timelock delay greater than the minimum,
@@ -268,10 +290,15 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             revert STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive();
         }
 
-        swapFeeModuleProposal =
-            SwapFeeModuleProposal({swapFeeModule: _swapFeeModule, startTimestamp: block.timestamp + _timelockDelay});
+        swapFeeModuleProposal = SwapFeeModuleProposal({
+            swapFeeModule: _swapFeeModule,
+            startTimestamp: block.timestamp + _timelockDelay
+        });
 
-        emit SwapFeeModuleProposed(swapFeeModule, block.timestamp + _timelockDelay);
+        emit SwapFeeModuleProposed(
+            swapFeeModule,
+            block.timestamp + _timelockDelay
+        );
     }
 
     /**
@@ -311,7 +338,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @dev Only callable by `owner`.
      * @param _poolManagerFeeBips New pool manager fee to apply in `pool`.
      */
-    function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external override onlyOwner nonReentrant {
+    function setPoolManagerFeeBips(
+        uint256 _poolManagerFeeBips
+    ) external override onlyOwner nonReentrant {
         ISovereignPool(pool).setPoolManagerFeeBips(_poolManagerFeeBips);
 
         emit PoolManagerFeeSet(_poolManagerFeeBips);
@@ -385,8 +414,16 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *         from `pool` into a lending protocol.
      * @dev Only callable by `withdrawalModule`.
      */
-    function supplyToken1Reserves(uint256 _amount1) external override onlyWithdrawalModule nonReentrant {
-        ISovereignPool(pool).withdrawLiquidity(0, _amount1, msg.sender, msg.sender, new bytes(0));
+    function supplyToken1Reserves(
+        uint256 _amount1
+    ) external override onlyWithdrawalModule nonReentrant {
+        ISovereignPool(pool).withdrawLiquidity(
+            0,
+            _amount1,
+            msg.sender,
+            msg.sender,
+            new bytes(0)
+        );
     }
 
     /**
@@ -397,12 +434,12 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @param _recipient Address to mint LP tokens for.
      * @return shares Amount of shares minted.
      */
-    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
-        external
-        override
-        nonReentrant
-        returns (uint256 shares)
-    {
+    function deposit(
+        uint256 _amount,
+        uint256 _minShares,
+        uint256 _deadline,
+        address _recipient
+    ) external override nonReentrant returns (uint256 shares) {
         _checkDeadline(_deadline);
 
         uint256 totalSupplyCache = totalSupply();
@@ -411,7 +448,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
             shares = _amount - MINIMUM_LIQUIDITY;
         } else {
-            (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(pool).getReserves();
+            (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(pool)
+                .getReserves();
 
             int256 amount0Correction = _withdrawalModule.amount0Correction();
             // Account for token0 in pool (liquid) and pending unstaking (locked)
@@ -419,15 +457,19 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             if (amount0Correction >= 0) {
                 reserve0Total = reserve0Pool + amount0Correction.toUint256();
             } else {
-                reserve0Total = reserve0Pool - (-amount0Correction).toUint256();
+                uint256 amount0CorrectionAbs = (-amount0Correction).toUint256();
+                reserve0Total = reserve0Pool > amount0CorrectionAbs
+                    ? reserve0Pool - amount0CorrectionAbs
+                    : 0;
             }
 
             // shares calculated in terms of token1
             shares = Math.mulDiv(
                 _amount,
                 totalSupplyCache,
-                reserve1Pool + _withdrawalModule.amountToken1LendingPool()
-                    + _withdrawalModule.convertToToken1(reserve0Total)
+                reserve1Pool +
+                    _withdrawalModule.amountToken1LendingPool() +
+                    _withdrawalModule.convertToToken1(reserve0Total)
             );
         }
 
@@ -437,7 +479,13 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         _mint(_recipient, shares);
 
-        ISovereignPool(pool).depositLiquidity(0, _amount, msg.sender, new bytes(0), abi.encode(msg.sender));
+        ISovereignPool(pool).depositLiquidity(
+            0,
+            _amount,
+            msg.sender,
+            new bytes(0),
+            abi.encode(msg.sender)
+        );
 
         emit Deposit(msg.sender, _recipient, _amount, shares);
     }
@@ -480,7 +528,12 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         address _recipient,
         bool _unwrapToNativeToken,
         bool _isInstantWithdrawal
-    ) external override nonReentrant returns (uint256 amount0, uint256 amount1) {
+    )
+        external
+        override
+        nonReentrant
+        returns (uint256 amount0, uint256 amount1)
+    {
         _checkDeadline(_deadline);
 
         if (_shares == 0) revert STEXAMM__withdraw_zeroShares();
@@ -491,30 +544,39 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         WithdrawCache memory cache;
 
-        (cache.reserve0Pool, cache.reserve1Pool) = ISovereignPool(pool).getReserves();
+        (cache.reserve0Pool, cache.reserve1Pool) = ISovereignPool(pool)
+            .getReserves();
 
         {
             uint256 totalSupplyCache = totalSupply();
             // Account for token1 pending withdrawal to LPs (locked)
 
             cache.poolShares = Math.mulDiv(
-                IstHYPE(token0).sharesOf(pool) - _withdrawalModule.amountToken0SharesPendingLPWithdrawal(),
+                IstHYPE(token0).sharesOf(pool) -
+                    _withdrawalModule.amountToken0SharesPendingLPWithdrawal(),
                 _shares,
                 totalSupplyCache
             );
             cache.pendingUnstakingShares = Math.mulDiv(
-                _withdrawalModule.amountToken0SharesPendingUnstaking()
-                    - _withdrawalModule.amountToken0SharesUnstakingLPWithdrawal(),
+                _withdrawalModule.amountToken0SharesPendingUnstaking() -
+                    _withdrawalModule.amountToken0SharesUnstakingLPWithdrawal(),
                 _shares,
                 totalSupplyCache
             );
 
-            cache.amount1LendingPool =
-                Math.mulDiv(_withdrawalModule.amountToken1LendingPool(), _shares, totalSupplyCache);
+            cache.amount1LendingPool = Math.mulDiv(
+                _withdrawalModule.amountToken1LendingPool(),
+                _shares,
+                totalSupplyCache
+            );
             // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
             // plus pro-rata share of token1 reserves earning yield in lending pool (liquid, assuming lending pool is working correctly)
-            amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, _shares, totalSupplyCache);
-            amount0 = IstHYPE(token0).sharesToBalance(cache.poolShares + cache.pendingUnstakingShares);
+            amount1 =
+                cache.amount1LendingPool +
+                Math.mulDiv(cache.reserve1Pool, _shares, totalSupplyCache);
+            amount0 = IstHYPE(token0).sharesToBalance(
+                cache.poolShares + cache.pendingUnstakingShares
+            );
         }
 
         // This is equivalent to an instant swap into token1 (with an extra fee in token1),
@@ -522,7 +584,10 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         if (_isInstantWithdrawal) {
             uint256 amount1SwapEquivalent = getAmountOut(token0, amount0);
             // Apply manager fee on instant withdrawals in token1
-            cache.instantWithdrawalFee1 = (amount1SwapEquivalent * ISovereignPool(pool).poolManagerFeeBips()) / BIPS;
+            cache.instantWithdrawalFee1 =
+                (amount1SwapEquivalent *
+                    ISovereignPool(pool).poolManagerFeeBips()) /
+                BIPS;
             amount1 += (amount1SwapEquivalent - cache.instantWithdrawalFee1);
 
             amount0 = 0;
@@ -542,23 +607,33 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         // Send token0 withdrawal request to withdrawal module,
         // to be processed asynchronously
         if (cache.poolShares > 0) {
-            _withdrawalModule.burnToken0AfterWithdraw(IstHYPE(token0).sharesToBalance(cache.poolShares), _recipient);
+            _withdrawalModule.burnToken0AfterWithdraw(
+                IstHYPE(token0).sharesToBalance(cache.poolShares),
+                _recipient
+            );
         }
 
         if (cache.pendingUnstakingShares > 0) {
-            _withdrawalModule.addClaimForPendingUnstakingShares(cache.pendingUnstakingShares, _recipient);
+            _withdrawalModule.addClaimForPendingUnstakingShares(
+                cache.pendingUnstakingShares,
+                _recipient
+            );
         }
 
         // Transfer token1 amount due from lending pool to recipient (including any earned yield),
         // also unwrapping into native token if necessary
         if (cache.amount1LendingPool > 0) {
             _withdrawalModule.withdrawToken1FromLendingPool(
-                cache.amount1LendingPool, _unwrapToNativeToken ? address(this) : _recipient
+                cache.amount1LendingPool,
+                _unwrapToNativeToken ? address(this) : _recipient
             );
 
             if (_unwrapToNativeToken) {
                 IWETH9(token1).withdraw(cache.amount1LendingPool);
-                Address.sendValue(payable(_recipient), cache.amount1LendingPool);
+                Address.sendValue(
+                    payable(_recipient),
+                    cache.amount1LendingPool
+                );
             }
         }
 
@@ -566,16 +641,33 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             // Withdraw due token1 amount from pool into this module,
             // witholding any due pool manager fees, and send remaining amount to recipient,
             // also unwrapping into native token if necessary
-            cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1 - cache.amount1LendingPool;
+            cache.amount1Remaining =
+                amount1 +
+                cache.instantWithdrawalFee1 -
+                cache.amount1LendingPool;
 
-            ISovereignPool(pool).withdrawLiquidity(0, cache.amount1Remaining, msg.sender, address(this), new bytes(0));
+            ISovereignPool(pool).withdrawLiquidity(
+                0,
+                cache.amount1Remaining,
+                msg.sender,
+                address(this),
+                new bytes(0)
+            );
 
             if (cache.amount1Remaining > cache.instantWithdrawalFee1) {
                 if (_unwrapToNativeToken) {
-                    IWETH9(token1).withdraw(cache.amount1Remaining - cache.instantWithdrawalFee1);
-                    Address.sendValue(payable(_recipient), cache.amount1Remaining - cache.instantWithdrawalFee1);
+                    IWETH9(token1).withdraw(
+                        cache.amount1Remaining - cache.instantWithdrawalFee1
+                    );
+                    Address.sendValue(
+                        payable(_recipient),
+                        cache.amount1Remaining - cache.instantWithdrawalFee1
+                    );
                 } else {
-                    ERC20(token1).safeTransfer(_recipient, cache.amount1Remaining - cache.instantWithdrawalFee1);
+                    ERC20(token1).safeTransfer(
+                        _recipient,
+                        cache.amount1Remaining - cache.instantWithdrawalFee1
+                    );
                 }
             }
         }
@@ -590,7 +682,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      */
     function getLiquidityQuote(
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
-        bytes calldata, /*_externalContext*/
+        bytes calldata /*_externalContext*/,
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
         // The swap happens at 1:1 exchange rate,
@@ -612,7 +704,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     function onSwapCallback(
         bool,
         /*_isZeroToOne*/
-        uint256, /*_amountIn*/
+        uint256 /*_amountIn*/,
         uint256 /*_amountOut*/
     ) external pure override {
         revert STEXAMM__onSwapCallback_NotImplemented();

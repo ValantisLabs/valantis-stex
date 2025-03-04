@@ -21,7 +21,11 @@ import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalMo
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
  *         and modular, upgradeable integration with a lending protocol via the Lending Module Interface.
  */
-contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, Ownable {
+contract stHYPEWithdrawalModule is
+    IWithdrawalModule,
+    ReentrancyGuardTransient,
+    Ownable
+{
     using SafeCast for uint256;
     using SafeERC20 for IWETH9;
     using SafeERC20 for ERC20;
@@ -32,7 +36,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *
      */
     event STEXSet(address stex);
-    event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
+    event LPWithdrawalRequestCreated(
+        uint256 id,
+        uint256 amountToken1,
+        address recipient
+    );
     event LPWithdrawalRequestClaimed(uint256 id);
     event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
     event LendingModuleProposalCancelled();
@@ -49,8 +57,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__OnlySTEX();
     error stHYPEWithdrawalModule__OnlySTEXOrOwner();
     error stHYPEWithdrawalModule__claim_alreadyClaimed();
-    error stHYPEWithdrawalModule__claim_cannotYetClaim();
-    error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
+    error stHYPEWithdrawalModule__claim_epochIdNotProcessed();
     error stHYPEWithdrawalModule__setSTEX_AlreadySet();
     error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
     error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
@@ -70,6 +77,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     uint256 private constant MIN_TIMELOCK_DELAY = 3 days;
     uint256 private constant MAX_TIMELOCK_DELAY = 7 days;
+
+    uint256 private constant E18 = 1e18;
 
     /**
      *
@@ -95,13 +104,20 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     /**
      * @notice Amount of `token0` shares which are owed to STEX AMM LPs who have burnt their LP tokens.
+     * @dev These amounts have not yet been unstaked.
      */
     uint256 public amountToken0SharesPendingLPWithdrawal;
 
     /**
-     * @notice Amount of `token0` shares which are unstaking from the `overseer` withdrawal queue.
+     * @notice Amount of `token0` shares which are unstaking from the `overseer` withdrawal queue
+     *         and are owed to STEX AMM LPs.
      */
     uint256 public amountToken0SharesUnstakingLPWithdrawal;
+
+    /**
+     * @notice Total amount of `token0` pending unstaking in the `overseer` withdrawal queue.
+     */
+    uint256 public amountToken0SharesPendingUnstaking;
 
     /**
      * @notice Unique identifier for each LP Withdrawal Request.
@@ -109,9 +125,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     uint256 public idLPWithdrawal;
 
     /**
-     * @notice Current epoch ID.
+     * @notice Current unstaking epoch ID.
      */
     uint160 public currentEpochId;
+
+    /**
+     * @notice ID for the current unstaking epoch in the `overseer` contract.
+     */
+    uint256 public overseerBurnId;
 
     /**
      * @notice mapping from `idLPWithdrawal` to its respective `LPWithdrawalRequest` data.
@@ -132,11 +153,6 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Address of lending module to interact with lending protocol.
      */
     ILendingModule public lendingModule;
-
-    /**
-     * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
-     */
-    uint256 public amountToken0SharesPendingUnstaking;
 
     /**
      *
@@ -176,11 +192,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  VIEW FUNCTIONS
      *
      */
-    function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
+    function convertToToken0(
+        uint256 _amountToken1
+    ) public pure override returns (uint256) {
         return _amountToken1;
     }
 
-    function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
+    function convertToToken1(
+        uint256 _amountToken0
+    ) public pure override returns (uint256) {
         return _amountToken0;
     }
 
@@ -190,15 +210,16 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @return The net amount of token0 shares in the contract.
      */
     function amount0Correction() public view override returns (int256) {
-        int256 netShares = int256(amountToken0SharesPendingUnstaking) - int256(amountToken0SharesPendingLPWithdrawal)
-            - int256(amountToken0SharesUnstakingLPWithdrawal);
+        int256 netShares = amountToken0SharesPendingUnstaking.toInt256() -
+            amountToken0SharesPendingLPWithdrawal.toInt256() -
+            amountToken0SharesUnstakingLPWithdrawal.toInt256();
 
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         IstHYPE token0 = IstHYPE(stexInterface.token0());
 
         // > 0 means that withdrawal module owes non zero tokens to pool
         // < 0 means that pool owes tokens to withdrawal module
-        return netShares * int256(token0.sharesToBalance(1e18));
+        return netShares * token0.sharesToBalance(E18).toInt256();
     }
 
     /**
@@ -206,7 +227,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @param _idLPWithdrawal The ID of the LP withdrawal request to retrieve.
      * @return The LP withdrawal request for the given ID.
      */
-    function getLPWithdrawals(uint256 _idLPWithdrawal) public view override returns (LPWithdrawalRequest memory) {
+    function getLPWithdrawals(
+        uint256 _idLPWithdrawal
+    ) public view override returns (LPWithdrawalRequest memory) {
         return LPWithdrawals[_idLPWithdrawal];
     }
 
@@ -245,16 +268,24 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         emit STEXSet(_stex);
     }
 
-    function proposeLendingModule(address _lendingModule, uint256 _timelockDelay) external onlyOwner {
+    function proposeLendingModule(
+        address _lendingModule,
+        uint256 _timelockDelay
+    ) external onlyOwner {
         _verifyTimelockDelay(_timelockDelay);
 
         if (lendingModuleProposal.startTimestamp > 0) {
             revert stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
         }
 
-        lendingModuleProposal =
-            LendingModuleProposal({lendingModule: _lendingModule, startTimestamp: block.timestamp + _timelockDelay});
-        emit LendingModuleProposed(_lendingModule, block.timestamp + _timelockDelay);
+        lendingModuleProposal = LendingModuleProposal({
+            lendingModule: _lendingModule,
+            startTimestamp: block.timestamp + _timelockDelay
+        });
+        emit LendingModuleProposed(
+            _lendingModule,
+            block.timestamp + _timelockDelay
+        );
     }
 
     function cancelLendingModuleProposal() external onlyOwner {
@@ -284,7 +315,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @dev This contract will receive token1 in native form,
      *      as pending unstaking requests are settled.
      */
-    receive() external payable nonReentrant {}
+    receive() external payable {}
 
     /**
      * @notice This function gets called after an LP burns its LP tokens,
@@ -293,20 +324,20 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @param _amountToken0 Amount of token0 which would be due to `_recipient`.
      * @param _recipient Address which should receive the amounts from this withdrawal's request once fulfilled.
      */
-    function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient)
-        external
-        override
-        onlySTEX
-        nonReentrant
-    {
+    function burnToken0AfterWithdraw(
+        uint256 _amountToken0,
+        address _recipient
+    ) external override onlySTEX nonReentrant {
         address token0 = ISTEXAMM(stex).token0();
-        // stHYPE's balances represent shares,
-        // so we need to calculate the equivalent amount expected in token1 (equivalently, native token)
-        uint256 amountToken1 = convertToToken1(_amountToken0);
 
-        amountToken0SharesPendingLPWithdrawal += IstHYPE(token0).balanceToShares(_amountToken0);
+        amountToken0SharesPendingLPWithdrawal += IstHYPE(token0)
+            .balanceToShares(_amountToken0);
 
-        emit LPWithdrawalRequestCreated(idLPWithdrawal, amountToken1, _recipient);
+        emit LPWithdrawalRequestCreated(
+            idLPWithdrawal,
+            convertToToken1(_amountToken0),
+            _recipient
+        );
 
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
@@ -326,16 +357,16 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @param _recipient Address which should receive `_amountToken1` of `token1`,
      *                   only relevant if msg.sender == AMM.
      */
-    function withdrawToken1FromLendingPool(uint256 _amountToken1, address _recipient)
-        external
-        override
-        onlySTEXOrOwner
-        nonReentrant
-    {
+    function withdrawToken1FromLendingPool(
+        uint256 _amountToken1,
+        address _recipient
+    ) external override onlySTEXOrOwner nonReentrant {
         if (address(lendingModule) == address(0)) return;
         if (_amountToken1 == 0) return;
 
-        address recipient = msg.sender == stex ? _recipient : ISTEXAMM(stex).pool();
+        address recipient = msg.sender == stex
+            ? _recipient
+            : ISTEXAMM(stex).pool();
         address token1 = ISTEXAMM(stex).token1();
 
         uint256 preBalance = ERC20(token1).balanceOf(recipient);
@@ -352,7 +383,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Withdraws a portion of pool's token1 reserves and supplies to `lendingPool` to earn extra yield.
      * @dev Only callable by `owner`.
      */
-    function supplyToken1ToLendingPool(uint256 _amountToken1) external onlyOwner nonReentrant {
+    function supplyToken1ToLendingPool(
+        uint256 _amountToken1
+    ) external onlyOwner nonReentrant {
         if (address(lendingModule) == address(0)) return;
         if (_amountToken1 == 0) return;
 
@@ -372,18 +405,21 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @dev Only callable by `owner`.
      * @param _unstakeAmountToken0 Amount of `token0` reserves to unstake.
      */
-    function unstakeToken0Reserves(uint256 _amountToken0) external override nonReentrant onlyOwner {
+    function unstakeToken0Reserves(
+        uint256 _amountToken0
+    ) external override nonReentrant onlyOwner {
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         stexInterface.unstakeToken0Reserves(_amountToken0);
 
         address token0 = stexInterface.token0();
         uint256 amountSharesToken0 = IstHYPE(token0).sharesOf(address(this));
 
+        // Can only execute one unstaking request at a time
         if (amountToken0SharesPendingUnstaking > 0) {
-            // can only unstake once one request is completed
             revert stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking();
         }
 
+        // Need to unstake enough shares to cover pending LP withdrawals
         if (amountSharesToken0 < amountToken0SharesPendingLPWithdrawal) {
             revert stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares();
         }
@@ -400,15 +436,28 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // WARNING: token0 balances represent shares,
         // hence the equivalent amount of token1 to be received is not 1:1
         ERC20(token0).forceApprove(overseer, _amountToken0);
-        IOverseer(overseer).burnAndRedeemIfPossible(address(this), _amountToken0, "");
+        overseerBurnId = IOverseer(overseer).burnAndRedeemIfPossible(
+            address(this),
+            _amountToken0,
+            ""
+        );
     }
 
-    function addClaimForPendingUnstakingShares(uint256 _shares, address _recipient) external onlySTEX {
-        LPWithdrawals[idLPWithdrawal] =
-            LPWithdrawalRequest({recipient: _recipient, shares: _shares.toUint96(), epochId: currentEpochId - 1});
+    function addClaimForPendingUnstakingShares(
+        uint256 _shares,
+        address _recipient
+    ) external onlySTEX {
+        LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
+            recipient: _recipient,
+            shares: _shares.toUint96(),
+            epochId: currentEpochId - 1
+        });
         idLPWithdrawal++;
         amountToken0SharesPendingLPWithdrawal += _shares;
-        if (amountToken0SharesPendingLPWithdrawal > amountToken0SharesPendingUnstaking) {
+        if (
+            amountToken0SharesPendingLPWithdrawal >
+            amountToken0SharesPendingUnstaking
+        ) {
             revert stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
         }
         emit LPWithdrawalRequestCreated(idLPWithdrawal, 0, address(this));
@@ -421,22 +470,41 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *      the AMM's Sovereign Pool.
      */
     function update() external nonReentrant onlyOwner {
+        bool isBurnRedeemable = IOverseer(overseer).redeemable(overseerBurnId);
+        // Check if current burn id needs to be redeemed
+        if (isBurnRedeemable) {
+            IOverseer(overseer).redeem(overseerBurnId);
+        } else {
+            // TODO: If it cannot be redeemed, we need to ensure that it has already been completed
+        }
+
         uint256 balance = address(this).balance;
-        uint256 exchangeRate = Math.mulDiv(balance, 1e18, amountToken0SharesPendingUnstaking);
+        if (balance == 0) return;
+
+        uint256 exchangeRate = Math.mulDiv(
+            balance,
+            E18,
+            amountToken0SharesPendingUnstaking
+        );
 
         epochExchangeRate[currentEpochId - 1] = exchangeRate;
 
-        uint256 amountForPool = balance
-            - Math.mulDiv(exchangeRate, amountToken0SharesPendingUnstaking - amountToken0SharesUnstakingLPWithdrawal, 1e18);
+        uint256 amountForPool = balance -
+            Math.mulDiv(
+                exchangeRate,
+                amountToken0SharesUnstakingLPWithdrawal,
+                E18
+            );
 
         amountToken0SharesPendingUnstaking = 0;
         amountToken0SharesUnstakingLPWithdrawal = 0;
+        overseerBurnId = 0;
 
-        // Wrap native token into token1 and re-deposit into the pool
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         address token1Address = stexInterface.token1();
         IWETH9 token1 = IWETH9(token1Address);
 
+        // Wrap native token balance, and transfer due portion to pool
         token1.deposit{value: balance}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
@@ -451,11 +519,19 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     function claim(uint256 _idLPQueue) external nonReentrant {
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
-        if (epochExchangeRate[request.epochId] == 0) {
+        if (request.shares == 0) {
             revert stHYPEWithdrawalModule__claim_alreadyClaimed();
         }
 
-        uint256 amountForRecipient = Math.mulDiv(request.shares, epochExchangeRate[request.epochId], 1e18);
+        if (epochExchangeRate[request.epochId] == 0) {
+            revert stHYPEWithdrawalModule__claim_epochIdNotProcessed();
+        }
+
+        uint256 amountForRecipient = Math.mulDiv(
+            request.shares,
+            epochExchangeRate[request.epochId],
+            E18
+        );
 
         emit LPWithdrawalRequestClaimed(_idLPQueue);
 
@@ -471,6 +547,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         Address.sendValue(payable(request.recipient), amountForRecipient);
     }
 
+    /**
+     *
+     *  PRIVATE FUNCTIONS
+     *
+     */
     function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
         if (_timelockDelay < MIN_TIMELOCK_DELAY) {
             revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
