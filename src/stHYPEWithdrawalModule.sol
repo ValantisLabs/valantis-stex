@@ -425,8 +425,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         epochExchangeRate[currentEpochId - 1] = exchangeRate;
 
-        uint256 amountForPool = balance
-            - Math.mulDiv(exchangeRate, amountToken0SharesPendingUnstaking - amountToken0SharesUnstakingLPWithdrawal, 1e18);
+        uint256 amountForPool = balance - Math.mulDiv(exchangeRate, amountToken0SharesUnstakingLPWithdrawal, 1e18);
 
         amountToken0SharesPendingUnstaking = 0;
         amountToken0SharesUnstakingLPWithdrawal = 0;
