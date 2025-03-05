@@ -21,9 +21,7 @@ contract MockStHype is ERC20, IstHYPE {
         super._burn(from, shares);
     }
 
-    function balanceOf(
-        address account
-    ) public view override(ERC20, IstHYPE) returns (uint256) {
+    function balanceOf(address account) public view override(ERC20, IstHYPE) returns (uint256) {
         // When used by the test directly, return shares to maintain compatibility
         return super.balanceOf(account);
     }
@@ -33,17 +31,11 @@ contract MockStHype is ERC20, IstHYPE {
     }
 
     function sharesToBalance(uint256 shares) public view returns (uint256) {
-        return
-            totalSupply() == 0
-                ? 0
-                : (shares * address(this).balance) / totalSupply();
+        return totalSupply() == 0 ? 0 : (shares * address(this).balance) / totalSupply();
     }
 
     function balanceToShares(uint256 balance) public view returns (uint256) {
-        return
-            address(this).balance == 0
-                ? 0
-                : (balance * totalSupply()) / address(this).balance;
+        return address(this).balance == 0 ? 0 : (balance * totalSupply()) / address(this).balance;
     }
 
     // Keep old methods for backward compatibility
