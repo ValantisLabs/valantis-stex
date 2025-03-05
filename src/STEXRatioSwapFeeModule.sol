@@ -81,30 +81,45 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
      */
     function getSwapFeeInBips(
         address _tokenIn,
-        address, /*_tokenOut*/
+        address /*_tokenOut*/,
         uint256 _amountIn,
-        address, /*_user*/
+        address /*_user*/,
         bytes memory /*_swapFeeModuleContext*/
-    ) external view override returns (SwapFeeModuleData memory swapFeeModuleData) {
+    )
+        external
+        view
+        override
+        returns (SwapFeeModuleData memory swapFeeModuleData)
+    {
         ISovereignPool poolInterface = ISovereignPool(pool);
         // Fee is only applied on token0 -> token1 swaps
         if (_tokenIn == poolInterface.token0()) {
             (uint256 reserve0, uint256 reserve1) = poolInterface.getReserves();
-            IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
+            IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(
+                withdrawalModule
+            );
 
-            int256 amount0Correction = withdrawalModuleInterface.amount0Correction();
+            int256 amount0Correction = withdrawalModuleInterface
+                .amount0Correction();
 
             uint256 amount0Total;
             if (amount0Correction >= 0) {
-                amount0Total = reserve0 + amount0Correction.toUint256() + _amountIn;
+                amount0Total =
+                    reserve0 +
+                    amount0Correction.toUint256() +
+                    _amountIn;
             } else {
-                amount0Total = reserve0 - (-amount0Correction).toUint256() + _amountIn;
+                uint256 amount0CorrectionAbs = (-amount0Correction).toUint256();
+                amount0Total = reserve0 + _amountIn > amount0CorrectionAbs
+                    ? reserve0 + _amountIn - amount0CorrectionAbs
+                    : 0;
             }
 
             FeeParams memory feeParamsCache = feeParams;
             uint256 feeInBips;
 
-            uint256 reserve1Total = reserve1 + withdrawalModuleInterface.amountToken1LendingPool();
+            uint256 reserve1Total = reserve1 +
+                withdrawalModuleInterface.amountToken1LendingPool();
 
             if (reserve1Total == 0) {
                 revert STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1();
@@ -117,11 +132,16 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             } else if (ratioBips < feeParamsCache.minThresholdRatioBips) {
                 feeInBips = feeParamsCache.feeMinBips;
             } else {
-                uint256 numerator = ratioBips - feeParamsCache.minThresholdRatioBips;
-                uint256 denominator = feeParamsCache.maxThresholdRatioBips - feeParamsCache.minThresholdRatioBips;
+                uint256 numerator = ratioBips -
+                    feeParamsCache.minThresholdRatioBips;
+                uint256 denominator = feeParamsCache.maxThresholdRatioBips -
+                    feeParamsCache.minThresholdRatioBips;
 
-                feeInBips = feeParamsCache.feeMinBips
-                    + ((feeParamsCache.feeMaxBips - feeParamsCache.feeMinBips) * numerator) / denominator;
+                feeInBips =
+                    feeParamsCache.feeMinBips +
+                    ((feeParamsCache.feeMaxBips - feeParamsCache.feeMinBips) *
+                        numerator) /
+                    denominator;
             }
 
             // Swap fee in `SovereignPool::swap` is applied as:
@@ -129,7 +149,10 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             // but our parametrization assumes the form: amountIn * (BIPS - feeInBips) / BIPS
             // Hence we need to equate both and solve for `swapFeeModuleData.feeInBips`,
             // with the constraint that feeInBips <= 5_000
-            swapFeeModuleData.feeInBips = (BIPS * BIPS) / (BIPS - feeInBips) - BIPS;
+            swapFeeModuleData.feeInBips =
+                (BIPS * BIPS) /
+                (BIPS - feeInBips) -
+                BIPS;
         }
     }
 
@@ -199,6 +222,11 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
             feeMaxBips: _feeMaxBips
         });
 
-        emit SwapFeeParamsSet(_minThresholdRatioBips, _maxThresholdRatioBips, _feeMinBips, _feeMaxBips);
+        emit SwapFeeParamsSet(
+            _minThresholdRatioBips,
+            _maxThresholdRatioBips,
+            _feeMinBips,
+            _feeMaxBips
+        );
     }
 }

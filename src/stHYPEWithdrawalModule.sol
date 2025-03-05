@@ -68,6 +68,8 @@ contract stHYPEWithdrawalModule is
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
     error stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking();
     error stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares();
+    error stHYPEWithdrawalModule__update_epochIdAlreadyProcessed();
+    error stHYPEWithdrawalModule__update_invalidExchangeRate();
     error stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
 
     /**
@@ -268,6 +270,12 @@ contract stHYPEWithdrawalModule is
         emit STEXSet(_stex);
     }
 
+    /**
+     * @notice Propose a new `lendingModule`.
+     * @param _lendingModule New Lending Module address to set.
+     * @param _timelockDelay Timelock delay after which the proposal can be executed.
+     * @dev Only callable by `owner`.
+     */
     function proposeLendingModule(
         address _lendingModule,
         uint256 _timelockDelay
@@ -282,17 +290,27 @@ contract stHYPEWithdrawalModule is
             lendingModule: _lendingModule,
             startTimestamp: block.timestamp + _timelockDelay
         });
+
         emit LendingModuleProposed(
             _lendingModule,
             block.timestamp + _timelockDelay
         );
     }
 
+    /**
+     * @notice Cancel `lendingModule` proposal.
+     * @dev Only callable by `owner`.
+     */
     function cancelLendingModuleProposal() external onlyOwner {
         emit LendingModuleProposalCancelled();
+
         delete lendingModuleProposal;
     }
 
+    /**
+     * @notice Execute `lendingModule` proposal after timelock has passed.
+     * @dev Only callable by `owner`.
+     */
     function setProposedLendingModule() external onlyOwner {
         if (lendingModuleProposal.startTimestamp > block.timestamp) {
             revert stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
@@ -307,24 +325,27 @@ contract stHYPEWithdrawalModule is
         }
 
         lendingModule = ILendingModule(lendingModuleProposal.lendingModule);
+
         delete lendingModuleProposal;
+
         emit LendingModuleSet(address(lendingModule));
     }
 
     /**
      * @dev This contract will receive token1 in native form,
-     *      as pending unstaking requests are settled.
+     *      as pending unstaking requests are processed by `overseer`.
      */
     receive() external payable {}
 
     /**
      * @notice This function gets called after an LP burns its LP tokens,
-     *         in order to create a pending request
+     *         in order to create a withdrawal request for surplus liquid token0 reserves
+     *         which are yet to be unstaked via `overseer`.
      * @dev Only callable by the AMM.
      * @param _amountToken0 Amount of token0 which would be due to `_recipient`.
      * @param _recipient Address which should receive the amounts from this withdrawal's request once fulfilled.
      */
-    function burnToken0AfterWithdraw(
+    function addClaimForPreUnstakingShares(
         uint256 _amountToken0,
         address _recipient
     ) external override onlySTEX nonReentrant {
@@ -348,60 +369,42 @@ contract stHYPEWithdrawalModule is
     }
 
     /**
-     * @notice This function gets called by either:
-     *         - AMM, after an LP burns its LP tokens,
-     *           in order to withdraw `token1` amounts from the lending protocol.
-     *         - `owner`, to withdraw `token1` from lending protocol back into pool.
-     * @dev Only callable by the AMM or `owner`.
-     * @param _amountToken1 Amount of token1 which is due to `_recipient` or pool.
-     * @param _recipient Address which should receive `_amountToken1` of `token1`,
-     *                   only relevant if msg.sender == AMM.
+     * @notice This function gets called after an LP burns its LP tokens,
+     *         in order to create a withdrawal request
+     *         for the token0 shares which are currently pending unstaking into token1 via `overseer`.
+     * @dev Only callable by the AMM.
+     * @param _shares Shares of token0 which are due to `_recipient`.
+     * @param _recipient Address which should receive the amounts from this withdrawal's request once fulfilled.
      */
-    function withdrawToken1FromLendingPool(
-        uint256 _amountToken1,
+    function addClaimForPendingUnstakingShares(
+        uint256 _shares,
         address _recipient
-    ) external override onlySTEXOrOwner nonReentrant {
-        if (address(lendingModule) == address(0)) return;
-        if (_amountToken1 == 0) return;
+    ) external onlySTEX {
+        // No unstaking requests have been executed
+        if (currentEpochId == 0) return;
 
-        address recipient = msg.sender == stex
-            ? _recipient
-            : ISTEXAMM(stex).pool();
-        address token1 = ISTEXAMM(stex).token1();
+        LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
+            recipient: _recipient,
+            shares: _shares.toUint96(),
+            epochId: currentEpochId - 1
+        });
 
-        uint256 preBalance = ERC20(token1).balanceOf(recipient);
-        lendingModule.withdraw(_amountToken1, recipient);
-        uint256 postBalance = ERC20(token1).balanceOf(recipient);
-        // Ensure that recipient gets at least `_amountToken1` worth of token1
-        if (postBalance - preBalance < _amountToken1) {
-            revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
+        idLPWithdrawal++;
+        amountToken0SharesPendingLPWithdrawal += _shares;
+
+        if (
+            amountToken0SharesPendingLPWithdrawal >
+            amountToken0SharesPendingUnstaking
+        ) {
+            revert stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
         }
-        emit AmountWithdrawnFromLendingModule(_amountToken1);
+
+        emit LPWithdrawalRequestCreated(idLPWithdrawal, 0, address(this));
     }
 
     /**
-     * @notice Withdraws a portion of pool's token1 reserves and supplies to `lendingPool` to earn extra yield.
-     * @dev Only callable by `owner`.
-     */
-    function supplyToken1ToLendingPool(
-        uint256 _amountToken1
-    ) external onlyOwner nonReentrant {
-        if (address(lendingModule) == address(0)) return;
-        if (_amountToken1 == 0) return;
-
-        ISTEXAMM stexInterface = ISTEXAMM(stex);
-        stexInterface.supplyToken1Reserves(_amountToken1);
-
-        address token1 = stexInterface.token1();
-
-        IWETH9(token1).forceApprove(address(lendingModule), _amountToken1);
-
-        lendingModule.deposit(_amountToken1);
-        emit AmountSuppliedToLendingModule(_amountToken1);
-    }
-
-    /**
-     * @notice Claims pool's accummulated token0 reserves and executes an unstaking request (burn) via `overseer`.
+     * @notice Claims a portion of pool's accummulated token0 reserves and executes an unstaking request (burn) via `overseer`.
+     * @param _amountToken0 Amount of token0 to withdraw from pool and unstake via `overseer`.
      * @dev Only callable by `owner`.
      * @param _unstakeAmountToken0 Amount of `token0` reserves to unstake.
      */
@@ -433,8 +436,7 @@ contract stHYPEWithdrawalModule is
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
-        // WARNING: token0 balances represent shares,
-        // hence the equivalent amount of token1 to be received is not 1:1
+        // depending on whether or not slashing happened.
         ERC20(token0).forceApprove(overseer, _amountToken0);
         overseerBurnId = IOverseer(overseer).burnAndRedeemIfPossible(
             address(this),
@@ -443,33 +445,74 @@ contract stHYPEWithdrawalModule is
         );
     }
 
-    function addClaimForPendingUnstakingShares(
-        uint256 _shares,
-        address _recipient
-    ) external onlySTEX {
-        LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
-            recipient: _recipient,
-            shares: _shares.toUint96(),
-            epochId: currentEpochId - 1
-        });
-        idLPWithdrawal++;
-        amountToken0SharesPendingLPWithdrawal += _shares;
-        if (
-            amountToken0SharesPendingLPWithdrawal >
-            amountToken0SharesPendingUnstaking
-        ) {
-            revert stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
-        }
-        emit LPWithdrawalRequestCreated(idLPWithdrawal, 0, address(this));
+    /**
+     * @notice Withdraws a portion of pool's token1 reserves and supplies to `lendingModule` to earn extra yield.
+     * @param _amountToken1 Amount of token1 to withdraw from pool and deposit into `lendingModule`.
+     * @dev Only callable by `owner`.
+     */
+    function supplyToken1ToLendingPool(
+        uint256 _amountToken1
+    ) external onlyOwner nonReentrant {
+        if (address(lendingModule) == address(0)) return;
+        if (_amountToken1 == 0) return;
+
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        stexInterface.supplyToken1Reserves(_amountToken1);
+
+        address token1 = stexInterface.token1();
+
+        IWETH9(token1).forceApprove(address(lendingModule), _amountToken1);
+
+        lendingModule.deposit(_amountToken1);
+
+        emit AmountSuppliedToLendingModule(_amountToken1);
     }
 
     /**
-     * @notice Checks current balance of native token and updates state.
+     * @notice This function gets called by either:
+     *         - AMM, after an LP burns its LP tokens,
+     *           in order to withdraw `token1` amounts from the lending protocol.
+     *         - `owner`, to withdraw `token1` from lending protocol back into pool.
+     * @dev Only callable by the AMM or `owner`.
+     * @param _amountToken1 Amount of token1 which is due to `_recipient` or pool.
+     * @param _recipient Address which should receive `_amountToken1` of `token1`,
+     *                   only relevant if msg.sender == AMM.
+     */
+    function withdrawToken1FromLendingPool(
+        uint256 _amountToken1,
+        address _recipient
+    ) external override onlySTEXOrOwner nonReentrant {
+        if (address(lendingModule) == address(0)) return;
+        if (_amountToken1 == 0) return;
+
+        address recipient = msg.sender == stex
+            ? _recipient
+            : ISTEXAMM(stex).pool();
+        address token1 = ISTEXAMM(stex).token1();
+
+        uint256 preBalance = ERC20(token1).balanceOf(recipient);
+        lendingModule.withdraw(_amountToken1, recipient);
+        uint256 postBalance = ERC20(token1).balanceOf(recipient);
+        // Ensure that recipient gets at least `_amountToken1` worth of token1
+        if (postBalance - preBalance < _amountToken1) {
+            revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
+        }
+
+        emit AmountWithdrawnFromLendingModule(_amountToken1);
+    }
+
+    /**
+     * @notice Checks if the current unstaking epoch has been processed by `overseer`,
+     *         and updates internal state.
      * @dev Pending LP withdrawals are prioritized,
      *      and any remaining native token is wrapped and transfered to
      *      the AMM's Sovereign Pool.
      */
     function update() external nonReentrant onlyOwner {
+        // Replay protection
+        if (epochExchangeRate[currentEpochId - 1] != 0)
+            revert stHYPEWithdrawalModule__update_epochIdAlreadyProcessed();
+
         bool isBurnRedeemable = IOverseer(overseer).redeemable(overseerBurnId);
         // Check if current burn id needs to be redeemed
         if (isBurnRedeemable) {
@@ -479,13 +522,15 @@ contract stHYPEWithdrawalModule is
         }
 
         uint256 balance = address(this).balance;
-        if (balance == 0) return;
 
         uint256 exchangeRate = Math.mulDiv(
             balance,
             E18,
             amountToken0SharesPendingUnstaking
         );
+
+        if (exchangeRate == 0)
+            revert stHYPEWithdrawalModule__update_invalidExchangeRate();
 
         epochExchangeRate[currentEpochId - 1] = exchangeRate;
 
@@ -540,9 +585,7 @@ contract stHYPEWithdrawalModule is
         ISTEXAMM stexInterface = ISTEXAMM(stex);
 
         address token1Address = stexInterface.token1();
-        IWETH9 token1 = IWETH9(token1Address);
-
-        token1.withdraw(amountForRecipient);
+        IWETH9(token1Address).withdraw(amountForRecipient);
         // Send equivalent amount of native token to recipient
         Address.sendValue(payable(request.recipient), amountForRecipient);
     }
