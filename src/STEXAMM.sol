@@ -544,24 +544,21 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         WithdrawCache memory cache;
 
-        (cache.reserve0Pool, cache.reserve1Pool) = ISovereignPool(pool)
-            .getReserves();
+        (, cache.reserve1Pool) = ISovereignPool(pool).getReserves();
 
         {
             uint256 totalSupplyCache = totalSupply();
 
             // token0 shares due to recipient which are currently in pool (liquid),
-            // but not yet unstaked into token1
+            // but are yet to be unstaked into token1
             cache.preUnstakingShares = Math.mulDiv(
-                IstHYPE(token0).sharesOf(pool) -
-                    _withdrawalModule.amountToken0SharesPendingLPWithdrawal(),
+                _claimablePreUnstakingToken0Shares(),
                 _shares,
                 totalSupplyCache
             );
             // token0 shares due to recipient which is currently pending unstaking into token1
             cache.pendingUnstakingShares = Math.mulDiv(
-                _withdrawalModule.amountToken0SharesPendingUnstaking() -
-                    _withdrawalModule.amountToken0SharesUnstakingLPWithdrawal(),
+                _claimablePendingUnstakingToken0Shares(),
                 _shares,
                 totalSupplyCache
             );
@@ -573,9 +570,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
                 totalSupplyCache
             );
 
+            // Total amount of token1 due to recipient now
             amount1 =
                 cache.amount1LendingPool +
                 Math.mulDiv(cache.reserve1Pool, _shares, totalSupplyCache);
+            // Total amount of token0 which will be unstaked into token1, and then claimable by recipient
             amount0 = IstHYPE(token0).sharesToBalance(
                 cache.preUnstakingShares + cache.pendingUnstakingShares
             );
@@ -607,13 +606,17 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         _burn(msg.sender, _shares);
 
         if (amount0 > 0) {
+            // Create LP withdrawal request to claim due amount of token1,
+            // which will be created through future unstaking requests of pool's token0 reserves
             if (cache.preUnstakingShares > 0) {
                 _withdrawalModule.addClaimForPreUnstakingShares(
-                    IstHYPE(token0).sharesToBalance(cache.preUnstakingShares),
+                    cache.preUnstakingShares,
                     _recipient
                 );
             }
 
+            // Create LP withdrawal request to claim due amount of token1,
+            // which will be created once the current unstaking request is processed
             if (cache.pendingUnstakingShares > 0) {
                 _withdrawalModule.addClaimForPendingUnstakingShares(
                     cache.pendingUnstakingShares,
@@ -721,6 +724,37 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         if (block.timestamp > deadline) {
             revert STEXAMM___checkDeadline_expired();
         }
+    }
+
+    function _claimablePreUnstakingToken0Shares()
+        private
+        view
+        returns (uint256)
+    {
+        uint256 sharesPreUnstakingPool = IstHYPE(token0).sharesOf(pool);
+        uint256 sharesPreUnstakingLPWithdrawals = _withdrawalModule
+            .amountToken0SharesPreUnstakingLPWithdrawal();
+
+        return
+            sharesPreUnstakingPool > sharesPreUnstakingLPWithdrawals
+                ? sharesPreUnstakingPool - sharesPreUnstakingLPWithdrawals
+                : 0;
+    }
+
+    function _claimablePendingUnstakingToken0Shares()
+        private
+        view
+        returns (uint256)
+    {
+        uint256 sharesPendingUnstaking = _withdrawalModule
+            .amountToken0SharesPendingUnstaking();
+        uint256 sharesPendingUnstakingLPWithdrawals = _withdrawalModule
+            .amountToken0SharesPendingUnstakingLPWithdrawal();
+
+        return
+            sharesPendingUnstaking > sharesPendingUnstakingLPWithdrawals
+                ? sharesPendingUnstaking - sharesPendingUnstakingLPWithdrawals
+                : 0;
     }
 
     function _verifyTimelockDelay(uint256 _timelockDelay) private pure {

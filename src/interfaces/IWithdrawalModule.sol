@@ -11,14 +11,14 @@ interface IWithdrawalModule {
 
     function stex() external view returns (address);
 
-    function amountToken0SharesUnstakingLPWithdrawal()
+    function amountToken0SharesPendingUnstakingLPWithdrawal()
         external
         view
         returns (uint256);
 
     function amountToken1LendingPool() external view returns (uint256);
 
-    function amountToken0SharesPendingLPWithdrawal()
+    function amountToken0SharesPreUnstakingLPWithdrawal()
         external
         view
         returns (uint256);

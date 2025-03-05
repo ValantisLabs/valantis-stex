@@ -5,6 +5,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -70,7 +71,6 @@ contract stHYPEWithdrawalModule is
     error stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares();
     error stHYPEWithdrawalModule__update_epochIdAlreadyProcessed();
     error stHYPEWithdrawalModule__update_invalidExchangeRate();
-    error stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
 
     /**
      *
@@ -90,6 +90,8 @@ contract stHYPEWithdrawalModule is
 
     /**
      * @notice Overseer contract from Thunderheads' Liquid Staking Protocol.
+     * @dev This contract handles the native withdrawal queue integration,
+     *      facilitating async converstions between token0 and token1 in native form.
      */
     address public immutable overseer;
 
@@ -105,19 +107,19 @@ contract stHYPEWithdrawalModule is
     address public stex;
 
     /**
-     * @notice Amount of `token0` shares which are owed to STEX AMM LPs who have burnt their LP tokens.
-     * @dev These amounts have not yet been unstaked.
+     * @notice Amount of `token0` shares which are owed to STEX AMM LPs who have burnt their LP tokens,
+     *         prior to unstaking via `overseer`.
      */
-    uint256 public amountToken0SharesPendingLPWithdrawal;
+    uint256 public amountToken0SharesPreUnstakingLPWithdrawal;
 
     /**
-     * @notice Amount of `token0` shares which are unstaking from the `overseer` withdrawal queue
+     * @notice Amount of `token0` shares which are currently pending unstaking from the `overseer` withdrawal queue
      *         and are owed to STEX AMM LPs.
      */
-    uint256 public amountToken0SharesUnstakingLPWithdrawal;
+    uint256 public amountToken0SharesPendingUnstakingLPWithdrawal;
 
     /**
-     * @notice Total amount of `token0` pending unstaking in the `overseer` withdrawal queue.
+     * @notice Total amount of `token0` shares pending unstaking in the `overseer` withdrawal queue.
      */
     uint256 public amountToken0SharesPendingUnstaking;
 
@@ -142,12 +144,12 @@ contract stHYPEWithdrawalModule is
     mapping(uint256 => LPWithdrawalRequest) public LPWithdrawals;
 
     /**
-     * @notice mapping from `epochId` to its respective `epochExchangeRate`.
+     * @notice mapping from `epochId` to its respective exchange rate (native token balance per token0 share).
      */
     mapping(uint256 => uint256) public epochExchangeRate;
 
     /**
-     * @notice Address of proposed lending module to interact with lending protocol.
+     * @notice Timelock proposal to update address of `lendingModule`.
      */
     LendingModuleProposal public lendingModuleProposal;
 
@@ -213,15 +215,20 @@ contract stHYPEWithdrawalModule is
      */
     function amount0Correction() public view override returns (int256) {
         int256 netShares = amountToken0SharesPendingUnstaking.toInt256() -
-            amountToken0SharesPendingLPWithdrawal.toInt256() -
-            amountToken0SharesUnstakingLPWithdrawal.toInt256();
+            amountToken0SharesPreUnstakingLPWithdrawal.toInt256() -
+            amountToken0SharesPendingUnstakingLPWithdrawal.toInt256();
 
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         IstHYPE token0 = IstHYPE(stexInterface.token0());
 
         // > 0 means that withdrawal module owes non zero tokens to pool
         // < 0 means that pool owes tokens to withdrawal module
-        return netShares * token0.sharesToBalance(E18).toInt256();
+        uint256 netSharesAbs = SignedMath.abs(netShares);
+        if (netShares >= 0) {
+            return token0.sharesToBalance(netSharesAbs).toInt256();
+        } else {
+            return -token0.sharesToBalance(netSharesAbs).toInt256();
+        }
     }
 
     /**
@@ -342,27 +349,26 @@ contract stHYPEWithdrawalModule is
      *         in order to create a withdrawal request for surplus liquid token0 reserves
      *         which are yet to be unstaked via `overseer`.
      * @dev Only callable by the AMM.
-     * @param _amountToken0 Amount of token0 which would be due to `_recipient`.
+     * @param _shares Shares of token0 which are due to `_recipient`.
      * @param _recipient Address which should receive the amounts from this withdrawal's request once fulfilled.
      */
     function addClaimForPreUnstakingShares(
-        uint256 _amountToken0,
+        uint256 _shares,
         address _recipient
     ) external override onlySTEX nonReentrant {
         address token0 = ISTEXAMM(stex).token0();
 
-        amountToken0SharesPendingLPWithdrawal += IstHYPE(token0)
-            .balanceToShares(_amountToken0);
+        amountToken0SharesPreUnstakingLPWithdrawal += _shares;
 
-        emit LPWithdrawalRequestCreated(
+        /*emit LPWithdrawalRequestCreated(
             idLPWithdrawal,
             convertToToken1(_amountToken0),
             _recipient
-        );
+        );*/
 
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
-            shares: IstHYPE(token0).balanceToShares(_amountToken0).toUint96(),
+            shares: _shares.toUint96(),
             epochId: currentEpochId
         });
         idLPWithdrawal++;
@@ -390,14 +396,7 @@ contract stHYPEWithdrawalModule is
         });
 
         idLPWithdrawal++;
-        amountToken0SharesPendingLPWithdrawal += _shares;
-
-        if (
-            amountToken0SharesPendingLPWithdrawal >
-            amountToken0SharesPendingUnstaking
-        ) {
-            revert stHYPEWithdrawalModule__addClaimForPendingUnstakingShares_insufficientShares();
-        }
+        amountToken0SharesPendingUnstakingLPWithdrawal += _shares;
 
         emit LPWithdrawalRequestCreated(idLPWithdrawal, 0, address(this));
     }
@@ -422,15 +421,15 @@ contract stHYPEWithdrawalModule is
             revert stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking();
         }
 
-        // Need to unstake enough shares to cover pending LP withdrawals
-        if (amountSharesToken0 < amountToken0SharesPendingLPWithdrawal) {
+        // Need to unstake enough shares to cover existing LP withdrawal claims
+        if (amountSharesToken0 < amountToken0SharesPreUnstakingLPWithdrawal) {
             revert stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares();
         }
 
         amountToken0SharesPendingUnstaking = amountSharesToken0;
 
-        amountToken0SharesUnstakingLPWithdrawal = amountToken0SharesPendingLPWithdrawal;
-        amountToken0SharesPendingLPWithdrawal = 0;
+        amountToken0SharesPendingUnstakingLPWithdrawal = amountToken0SharesPreUnstakingLPWithdrawal;
+        amountToken0SharesPreUnstakingLPWithdrawal = 0;
 
         currentEpochId++;
 
@@ -537,12 +536,12 @@ contract stHYPEWithdrawalModule is
         uint256 amountForPool = balance -
             Math.mulDiv(
                 exchangeRate,
-                amountToken0SharesUnstakingLPWithdrawal,
+                amountToken0SharesPendingUnstakingLPWithdrawal,
                 E18
             );
 
         amountToken0SharesPendingUnstaking = 0;
-        amountToken0SharesUnstakingLPWithdrawal = 0;
+        amountToken0SharesPendingUnstakingLPWithdrawal = 0;
         overseerBurnId = 0;
 
         ISTEXAMM stexInterface = ISTEXAMM(stex);
