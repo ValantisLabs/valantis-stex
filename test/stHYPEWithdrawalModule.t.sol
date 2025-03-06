@@ -327,6 +327,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         uint256 snapshot = vm.snapshotState();
         uint256 snapshot2 = vm.snapshotState();
+        uint256 snapshot3 = vm.snapshotState();
 
         _withdrawalModule.update();
         // No pending LP withdrawals and no slashing,
@@ -338,16 +339,16 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_epochIdAlreadyProcessed.selector);
         _withdrawalModule.update();
 
-        vm.revertToState(snapshot2);
+        vm.revertToState(snapshot3);
 
-        // Overseer with faulty `redeem`
+        // Scenario where overseer has faulty `redeem`
         overseer.setIsCompromised(true);
 
         // zero ETH balance after unstaking is not allowed
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_invalidExchangeRate.selector);
         _withdrawalModule.update();
 
-        vm.revertToState(snapshot);
+        vm.revertToState(snapshot2);
 
         // In this scenario, two recipients make a claim for a portion of ETH
         // of the current unstaking epoch
@@ -393,6 +394,21 @@ contract stHYPEWithdrawalModuleTest is Test {
         _withdrawalModule.claim(1);
 
         assertEq(weth.balanceOf(address(_withdrawalModule)), 0);
+
+        vm.revertToState(snapshot);
+
+        // Scenario where unstaking request cannot be redeemed in overseer,
+        // but is not yet completed
+
+        vm.deal(address(overseer), 0);
+        assertEq(address(overseer).balance, 0);
+
+        vm.startPrank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_burnIdNotCompleted.selector, 0)
+        );
+        _withdrawalModule.update();
+        vm.stopPrank();
     }
 
     function testLendingModuleProposal() public {

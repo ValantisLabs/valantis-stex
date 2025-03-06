@@ -533,7 +533,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         if (isBurnRedeemable) {
             IOverseer(overseer).redeem(overseerBurnIdCache);
         } else {
-            // Need to ensure that this burn id has been completed
+            // Need to ensure that this burn id has been fully unstaked
             (,, bool completed,) = IOverseer(overseer).burns(overseerBurnIdCache);
 
             if (!completed) {
