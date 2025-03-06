@@ -67,6 +67,8 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(address(_token0).balance, 100 ether);
 
         _token0.approve(address(withdrawalModule), 100 ether);
+
+        vm.deal(address(overseer), 10 ether);
     }
 
     /**
@@ -294,147 +296,78 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_zeroUnstakingRequestsStarted.selector);
         withdrawalModule.update();
 
-        /*_unstakeToken0Reserves(3 ether);
+        vm.stopPrank();
+
+        _unstakeToken0Reserves(3 ether);
         assertEq(address(withdrawalModule).balance, 0);
-        assertEq(
-            withdrawalModule.amountToken0SharesPendingUnstaking(),
-            _token0.balanceToShares(3 ether)
-        );
-        assertEq(
-            withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(),
-            0
-        );
+        assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), _token0.balanceToShares(3 ether));
+        assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), 0);
+
+        vm.startPrank(owner);
 
         uint256 snapshot = vm.snapshotState();
         uint256 snapshot2 = vm.snapshotState();
 
-        // Update with partial unstaking fulfilled
-        vm.deal(address(withdrawalModule), 2 ether);
+        withdrawalModule.update();
+        // No pending LP withdrawals and no slashing,
+        // so the entire amount of ETH unstaked goes back into the pool as WETH
+        assertEq(weth.balanceOf(address(_pool)), 3 ether);
+        assertEq(weth.balanceOf(address(withdrawalModule)), 0);
+
+        // unstaking epoch id already processed
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_epochIdAlreadyProcessed.selector);
         withdrawalModule.update();
 
-        assertEq(
-            withdrawalModule.amountToken0PendingUnstaking(),
-            3 ether - withdrawalModule.convertToToken0(2 ether)
-        );
-        // All ETH got wrapped and transferred into pool,
-        // since there were no LP withdrawals to fulfill
-        assertEq(address(withdrawalModule).balance, 0);
-        assertEq(weth.balanceOf(_pool), 2 ether);
+        vm.revertToState(snapshot2);
 
-        vm.revertToState(snapshot2);*/
+        // Overseer with faulty `redeem`
+        overseer.setIsCompromised(true);
 
-        // Update with partial unstaking fulfilled and partial LP withdrawal
-
-        /*address recipient = makeAddr("MOCK_RECIPIENT");
-        withdrawalModule.burnToken0AfterWithdraw(1 ether, recipient);
-        uint256 amountToken1PendingLPWithdrawal = withdrawalModule
-            .amountToken1PendingLPWithdrawal();
-        assertEq(
-            amountToken1PendingLPWithdrawal,
-            withdrawalModule.convertToToken1(1 ether)
-        );
-
-        vm.deal(address(withdrawalModule), 0.5 ether);
+        // zero ETH balance after unstaking is not allowed
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_invalidExchangeRate.selector);
         withdrawalModule.update();
-
-        assertEq(
-            withdrawalModule.amountToken0PendingUnstaking(),
-            3 ether - withdrawalModule.convertToToken0(0.5 ether)
-        );
-        assertEq(
-            withdrawalModule.amountToken1ClaimableLPWithdrawal(),
-            0.5 ether
-        );
-        assertEq(
-            withdrawalModule.amountToken1PendingLPWithdrawal(),
-            amountToken1PendingLPWithdrawal - 0.5 ether
-        );
-        assertEq(address(withdrawalModule).balance, 0.5 ether);
-        // Not enough ETH left to re-deposit into pool
-        assertEq(weth.balanceOf(_pool), 0);
-
-        // Cannot claim withdrawal request because there is not enough ETH available
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__claim_insufficientAmountToClaim
-                .selector
-        );
-        withdrawalModule.claim(0);
 
         vm.revertToState(snapshot);
 
-        // Update with all unstaking requests and LP withdrawals fulfilled + remaining funds re-deposited into pool
-
-        recipient = makeAddr("MOCK_RECIPIENT");
-        withdrawalModule.burnToken0AfterWithdraw(1 ether, recipient);
-        amountToken1PendingLPWithdrawal = withdrawalModule
-            .amountToken1PendingLPWithdrawal();
-        assertEq(
-            amountToken1PendingLPWithdrawal,
-            withdrawalModule.convertToToken1(1 ether)
-        );
-
-        vm.deal(address(withdrawalModule), 5 ether);
-        withdrawalModule.update();
-
-        // All unstaking requests got fulfilled
-        assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
-        // Pending LP withdrawal can now be claimed
-        assertEq(
-            withdrawalModule.amountToken1ClaimableLPWithdrawal(),
-            amountToken1PendingLPWithdrawal
-        );
-        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
-        assertEq(
-            address(withdrawalModule).balance,
-            amountToken1PendingLPWithdrawal
-        );
-        // Remaining ETH amount got wrapped and re-deposited into pool
-        assertEq(
-            weth.balanceOf(_pool),
-            5 ether - amountToken1PendingLPWithdrawal
-        );
-
-        withdrawalModule.claim(0);
-        assertEq(recipient.balance, amountToken1PendingLPWithdrawal);*/
-    }
-
-    /*function testClaimWithPriority() public {
-        uint256 amount1 = 1 ether;
+        // In this scenario, two recipients make a claim for a portion of ETH
+        // of the current unstaking epoch
         address recipient1 = makeAddr("MOCK_RECIPIENT_1");
-        // User 1 requests withdrawal (before unstaking fulfillment)
-        _burnToken0AfterWithdraw(amount1, recipient1);
-
-        // User 2 requests withdrawal (before unstaking fulfillment)
-        uint256 amount2 = 2 ether;
         address recipient2 = makeAddr("MOCK_RECIPIENT_2");
-        _burnToken0AfterWithdraw(amount2, recipient2);
 
-        // Simulate unstaking fulfillment
-        vm.deal(address(withdrawalModule), 4 ether);
-        withdrawalModule.update();
+        vm.startPrank(address(this));
+        withdrawalModule.addClaimForPendingUnstakingShares(1 ether, recipient1);
+        withdrawalModule.addClaimForPendingUnstakingShares(1.5 ether, recipient2);
+        vm.stopPrank();
 
-        // User 3 requests withdrawal (after unstaking fulfillment)
-        uint256 amount3 = 0.1 ether;
-        address recipient3 = makeAddr("MOCK_RECIPIENT_3");
-        _burnToken0AfterWithdraw(amount3, recipient3);
-
-        // User 1 can claim, because it requested withdrawal before the call to `update`
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_epochIdNotProcessed.selector);
         withdrawalModule.claim(0);
-        assertGt(recipient1.balance, 0);
 
-        // User 3 cannot claim, because it requested withdrawal after the call to `update`
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__claim_cannotYetClaim
-                .selector
-        );
-        withdrawalModule.claim(2);
-
-        // User 2 can claim, similar scenario to user 1
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_epochIdNotProcessed.selector);
         withdrawalModule.claim(1);
-        assertGt(recipient2.balance, 0);
-    }*/
+
+        vm.startPrank(owner);
+
+        withdrawalModule.update();
+        assertEq(weth.balanceOf(address(_pool)), 0.5 ether);
+        // 1 ether stays in withdrawal module to be claimed by the recipients
+        assertEq(weth.balanceOf(address(withdrawalModule)), 2.5 ether);
+
+        vm.stopPrank();
+
+        withdrawalModule.claim(0);
+        assertEq(recipient1.balance, 1 ether);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
+        withdrawalModule.claim(0);
+
+        withdrawalModule.claim(1);
+        assertEq(recipient2.balance, 1.5 ether);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
+        withdrawalModule.claim(1);
+
+        assertEq(weth.balanceOf(address(withdrawalModule)), 0);
+    }
 
     function testLendingModuleProposal() public {
         address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");

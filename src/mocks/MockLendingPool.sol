@@ -64,7 +64,7 @@ contract MockLendingPool is IPool {
         _shares[msg.sender] -= shares;
         _totalSupply -= shares;
 
-        ERC20(asset).safeTransfer(to, isCompromised ? 0 : amount);
+        ERC20(asset).safeTransfer(to, isCompromised ? amount / 2 : amount);
 
         return amount;
     }
