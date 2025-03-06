@@ -18,7 +18,6 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
-import {IstHYPE} from "./interfaces/IStHYPE.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
 import {SwapFeeModuleProposal} from "./structs/STEXAMMStructs.sol";
 
@@ -61,7 +60,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *
      */
     struct WithdrawCache {
-        uint256 reserve0Pool;
         uint256 reserve1Pool;
         uint256 preUnstakingShares;
         uint256 pendingUnstakingShares;
@@ -384,7 +382,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
     /**
      * @notice Allows the withdrawal module to supply a portion of `token1` reserves
-     *         from `pool` into a lending protocol.
+     *         from `pool` into an external protocol to earn yield (e.g. lending market).
      * @dev Only callable by `withdrawalModule`.
      */
     function supplyToken1Reserves(uint256 _amount1) external override onlyWithdrawalModule nonReentrant {
@@ -515,7 +513,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, _shares, totalSupplyCache);
             // Total amount of token0 which will be unstaked into token1,
             // and then claimable by recipient once unstaking has been processed
-            amount0 = IstHYPE(token0).sharesToBalance(cache.preUnstakingShares + cache.pendingUnstakingShares);
+            amount0 = _withdrawalModule.token0SharesToBalance(cache.preUnstakingShares + cache.pendingUnstakingShares);
         }
 
         // This is equivalent to an instant swap into token1 (with an extra fee in token1),
@@ -635,7 +633,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     }
 
     function _claimablePreUnstakingToken0Shares() private view returns (uint256) {
-        uint256 sharesPreUnstakingPool = IstHYPE(token0).sharesOf(pool);
+        uint256 sharesPreUnstakingPool = _withdrawalModule.token0SharesOf(pool);
         uint256 sharesPreUnstakingLPWithdrawals = _withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal();
 
         // Claimable amount of token0 shares prior to unstaking

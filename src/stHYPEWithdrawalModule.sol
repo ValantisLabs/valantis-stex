@@ -203,6 +203,27 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         return _amountToken0;
     }
 
+    function token0SharesToBalance(uint256 _shares) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.sharesToBalance(_shares);
+    }
+
+    function token0BalanceToShares(uint256 _balance) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.balanceToShares(_balance);
+    }
+
+    function token0SharesOf(address _account) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.sharesOf(_account);
+    }
+
     /**
      * @notice Returns the net amount of token0 in the contract.
      * @dev This is used to correct the amount of token0 in the pool.
@@ -421,6 +442,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
         // depending on whether or not slashing happened.
+        // This unstaking request corresponds to epoch id = currentEpochId - 1
         ERC20(token0).forceApprove(overseer, _amountToken0);
         overseerBurnId =
             IOverseer(overseer).burnAndRedeemIfPossible(address(this), _amountToken0, overseerCommunityCode);

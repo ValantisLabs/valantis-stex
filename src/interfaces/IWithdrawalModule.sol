@@ -23,6 +23,12 @@ interface IWithdrawalModule {
 
     function convertToToken1(uint256 _amountToken0) external view returns (uint256);
 
+    function token0SharesToBalance(uint256 _shares) external view returns (uint256);
+
+    function token0BalanceToShares(uint256 _balance) external view returns (uint256);
+
+    function token0SharesOf(address _account) external view returns (uint256);
+
     function getLPWithdrawals(uint256 _idLPWithdrawal) external view returns (LPWithdrawalRequest memory);
 
     function epochExchangeRate(uint256 _epochId) external view returns (uint256);
