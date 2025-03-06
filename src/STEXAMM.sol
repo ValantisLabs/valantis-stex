@@ -507,12 +507,14 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
                 Math.mulDiv(_claimablePendingUnstakingToken0Shares(), _shares, totalSupplyCache);
 
             // token1 amount which is due to recipient and is currently deposited into lending protocol
+            // It is assumed that this will be available for instant withdrawal
             cache.amount1LendingPool =
                 Math.mulDiv(_withdrawalModule.amountToken1LendingPool(), _shares, totalSupplyCache);
 
             // Total amount of token1 due to recipient now
             amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, _shares, totalSupplyCache);
-            // Total amount of token0 which will be unstaked into token1, and then claimable by recipient
+            // Total amount of token0 which will be unstaked into token1,
+            // and then claimable by recipient once unstaking has been processed
             amount0 = IstHYPE(token0).sharesToBalance(cache.preUnstakingShares + cache.pendingUnstakingShares);
         }
 
@@ -540,13 +542,13 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         if (amount0 > 0) {
             // Create LP withdrawal request to claim due amount of token1,
-            // which will be created through future unstaking requests of pool's token0 reserves
+            // which will be created through a future unstaking request of pool's token0 reserves
             if (cache.preUnstakingShares > 0) {
                 _withdrawalModule.addClaimForPreUnstakingShares(cache.preUnstakingShares, _recipient);
             }
 
             // Create LP withdrawal request to claim due amount of token1,
-            // which will be created once the current unstaking request is processed
+            // which will be available to claim once the currently pending unstaking request has been processed
             if (cache.pendingUnstakingShares > 0) {
                 _withdrawalModule.addClaimForPendingUnstakingShares(cache.pendingUnstakingShares, _recipient);
             }
@@ -636,6 +638,10 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         uint256 sharesPreUnstakingPool = IstHYPE(token0).sharesOf(pool);
         uint256 sharesPreUnstakingLPWithdrawals = _withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal();
 
+        // Claimable amount of token0 shares prior to unstaking
+        // are calculated as the excess positive amount of:
+        // token0 shares which exist as pool reserves (liquid) - token0 shares already claimed by previous LP withdrawals
+        // Those will be unstaked back into token1 through withdrawal module on the next unstaking epoch
         return sharesPreUnstakingPool > sharesPreUnstakingLPWithdrawals
             ? sharesPreUnstakingPool - sharesPreUnstakingLPWithdrawals
             : 0;
@@ -645,6 +651,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         uint256 sharesPendingUnstaking = _withdrawalModule.amountToken0SharesPendingUnstaking();
         uint256 sharesPendingUnstakingLPWithdrawals = _withdrawalModule.amountToken0SharesPendingUnstakingLPWithdrawal();
 
+        // Claimable amount of token0 shares which are currently being unstaked through the withdrawal module
+        // are calculated as the excess positive amount of:
+        // token0 shares which have been burnt and are pending unstaking - token0 shares already claimed by previous LP withdrawals
         return sharesPendingUnstaking > sharesPendingUnstakingLPWithdrawals
             ? sharesPendingUnstaking - sharesPendingUnstakingLPWithdrawals
             : 0;

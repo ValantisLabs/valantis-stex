@@ -337,8 +337,6 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         onlySTEX
         nonReentrant
     {
-        address token0 = ISTEXAMM(stex).token0();
-
         amountToken0SharesPreUnstakingLPWithdrawal += _shares;
 
         /*emit LPWithdrawalRequestCreated(
@@ -468,8 +466,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Checks if the current unstaking epoch has been processed by `overseer`,
      *         and updates internal state.
      * @dev Pending LP withdrawals are prioritized,
-     *      and any remaining native token is wrapped and transfered to
-     *      the AMM's Sovereign Pool.
+     *      and any remaining native token is wrapped and transfered
+     *      back into the AMM's Sovereign Pool.
      */
     function update() external nonReentrant onlyOwner {
         if (currentEpochId == 0) {
@@ -499,7 +497,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         epochExchangeRate[currentEpochId - 1] = exchangeRate;
 
-        uint256 amountForPool = balance - Math.mulDiv(exchangeRate, amountToken0SharesPendingUnstakingLPWithdrawal, E18);
+        uint256 amountForLPWithdrawals = Math.mulDiv(amountToken0SharesPendingUnstakingLPWithdrawal, exchangeRate, E18);
+
+        uint256 amountForPool = balance > amountForLPWithdrawals ? balance - amountForLPWithdrawals : 0;
 
         amountToken0SharesPendingUnstaking = 0;
         amountToken0SharesPendingUnstakingLPWithdrawal = 0;
@@ -513,7 +513,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         token1.deposit{value: balance}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
-        token1.safeTransfer(stexInterface.pool(), amountForPool);
+        if (amountForPool > 0) {
+            token1.safeTransfer(stexInterface.pool(), amountForPool);
+        }
     }
 
     /**
@@ -538,9 +540,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         delete LPWithdrawals[_idLPQueue];
 
-        ISTEXAMM stexInterface = ISTEXAMM(stex);
-
-        address token1Address = stexInterface.token1();
+        address token1Address = ISTEXAMM(stex).token1();
         IWETH9(token1Address).withdraw(amountForRecipient);
         // Send equivalent amount of native token to recipient
         Address.sendValue(payable(request.recipient), amountForRecipient);

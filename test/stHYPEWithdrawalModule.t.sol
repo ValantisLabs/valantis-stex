@@ -60,19 +60,18 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
-        // Simulates a positive rebase
-        vm.deal(address(_token0), 20 ether);
         uint256 shares = _token0.mint{value: 100 ether}(address(this));
         assertEq(shares, 100 ether);
         assertEq(_token0.totalSupply(), shares);
-        assertEq(_token0.balanceOf(address(this)), shares);
-        assertEq(address(_token0).balance, 120 ether);
+        assertEq(_token0.balanceOf(address(this)), 100 ether);
+        assertEq(address(_token0).balance, 100 ether);
 
-        _token0.approve(address(withdrawalModule), type(uint256).max);
+        _token0.approve(address(withdrawalModule), 100 ether);
     }
 
-    // AMM mock functions
-
+    /**
+     * AMM mock functions **
+     */
     function token0() external view returns (address) {
         return address(_token0);
     }
@@ -91,6 +90,9 @@ contract stHYPEWithdrawalModuleTest is Test {
         weth.transfer(msg.sender, amount);
     }
 
+    /**
+     * **
+     */
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
         new stHYPEWithdrawalModule(address(0), address(this));

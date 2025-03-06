@@ -86,7 +86,7 @@ contract STEXAMMTest is Test {
             poolFeeRecipient2,
             owner,
             address(withdrawalModule),
-            0
+            10
         );
         withdrawalModule.setSTEX(address(stex));
         assertEq(withdrawalModule.stex(), address(stex));
@@ -107,15 +107,18 @@ contract STEXAMMTest is Test {
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
-        // Simulates a positive rebase
-        vm.deal(address(token0), 20 ether);
+
         uint256 shares = token0.mint{value: 100 ether}(address(this));
         assertEq(shares, 100 ether);
         assertEq(token0.totalSupply(), shares);
-        assertEq(token0.balanceOf(address(this)), shares);
-        assertEq(address(token0).balance, 120 ether); // Positive rebase
+        assertEq(token0.balanceOf(address(this)), 100 ether);
+        assertEq(address(token0).balance, 100 ether);
+        // Simulates a positive rebase
+        payable(address(token0)).transfer(20 ether);
+        assertEq(address(token0).balance, 120 ether);
+        assertGt(token0.balanceOf(address(this)), 100 ether);
 
-        token0.approve(address(pool), type(uint256).max);
+        token0.approve(address(pool), 100 ether);
         weth.approve(address(pool), type(uint256).max);
     }
 
@@ -877,7 +880,7 @@ contract STEXAMMTest is Test {
         assertGt(token0.balanceOf(poolFeeRecipient2), 0);
         assertEq(weth.balanceOf(poolFeeRecipient1), 0.5 ether);
         assertEq(weth.balanceOf(poolFeeRecipient2), 0.5 ether);
-        assertEq(token0.balanceOf(address(stex)), 0);
+        assertEq(token0.balanceOf(address(stex)), 1);
         assertEq(weth.balanceOf(address(stex)), 0);
     }
 
