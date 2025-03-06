@@ -22,6 +22,10 @@ contract MockOverseer is IOverseer {
         isCompromised = value;
     }
 
+    function burns(uint256 id) external view returns (uint88, address, bool, uint256) {
+        return (0, address(0), burnsById[id].completed, 0);
+    }
+
     function redeemable(uint256 _burnId) external view returns (bool) {
         Burn memory burnRequest = burnsById[_burnId];
         return !burnRequest.completed && burnRequest.amount <= address(this).balance;

@@ -161,7 +161,8 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.revertToState(snapshot);
 
         // unstake 0.5 eth + add LP claim for 1 eth
-        testAddClaimForPendingUnstakingShares();
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _addClaimForPendingUnstakingShares(recipient, 1 ether, 0.5 ether);
 
         amount0Correction = _withdrawalModule.amount0Correction();
         assertEq(amount0Correction, -int256(_token0.sharesToBalance(0.5 ether)));

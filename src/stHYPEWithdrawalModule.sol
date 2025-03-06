@@ -34,13 +34,17 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     event OverseerCommunityCodeSet(string communityCode);
     event STEXSet(address stex);
-    event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
+    event LPWithdrawalRequestCreated(
+        uint256 id, uint256 epochId, uint256 shares, uint256 amountToken1Expected, address recipient
+    );
     event LPWithdrawalRequestClaimed(uint256 id);
     event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
     event LendingModuleProposalCancelled();
     event LendingModuleSet(address lendingModule);
     event AmountSuppliedToLendingModule(uint256 amount);
     event AmountWithdrawnFromLendingModule(uint256 amount);
+    event Token0PendingUnstaking(uint256 amount, uint256 epochId);
+    event Update(uint256 totalBalance, uint256 amountForPool, uint256 epochId);
 
     /**
      *
@@ -62,6 +66,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
     error stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking();
     error stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares();
+    error stHYPEWithdrawalModule__update_burnIdNotCompleted(uint256 overseerBurnId);
     error stHYPEWithdrawalModule__update_epochIdAlreadyProcessed();
     error stHYPEWithdrawalModule__update_invalidExchangeRate();
     error stHYPEWithdrawalModule__update_zeroUnstakingRequestsStarted();
@@ -376,11 +381,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     {
         amountToken0SharesPreUnstakingLPWithdrawal += _shares;
 
-        /*emit LPWithdrawalRequestCreated(
-            idLPWithdrawal,
-            convertToToken1(_amountToken0),
-            _recipient
-        );*/
+        emit LPWithdrawalRequestCreated(
+            idLPWithdrawal, currentEpochId, _shares, convertToToken1(token0SharesToBalance(_shares)), _recipient
+        );
 
         LPWithdrawals[idLPWithdrawal] =
             LPWithdrawalRequest({recipient: _recipient, shares: _shares.toUint96(), epochId: currentEpochId});
@@ -399,13 +402,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // No unstaking requests have been executed
         if (currentEpochId == 0) return;
 
+        emit LPWithdrawalRequestCreated(
+            idLPWithdrawal, currentEpochId - 1, _shares, convertToToken1(token0SharesToBalance(_shares)), _recipient
+        );
+
         LPWithdrawals[idLPWithdrawal] =
             LPWithdrawalRequest({recipient: _recipient, shares: _shares.toUint96(), epochId: currentEpochId - 1});
 
         idLPWithdrawal++;
         amountToken0SharesPendingUnstakingLPWithdrawal += _shares;
-
-        emit LPWithdrawalRequestCreated(idLPWithdrawal, 0, address(this));
     }
 
     /**
@@ -442,10 +447,12 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
         // depending on whether or not slashing happened.
-        // This unstaking request corresponds to epoch id = currentEpochId - 1
         ERC20(token0).forceApprove(overseer, _amountToken0);
         overseerBurnId =
             IOverseer(overseer).burnAndRedeemIfPossible(address(this), _amountToken0, overseerCommunityCode);
+
+        // This unstaking request corresponds to epoch id = currentEpochId - 1
+        emit Token0PendingUnstaking(_amountToken0, currentEpochId - 1);
     }
 
     /**
@@ -519,12 +526,19 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             revert stHYPEWithdrawalModule__update_epochIdAlreadyProcessed();
         }
 
-        bool isBurnRedeemable = IOverseer(overseer).redeemable(overseerBurnId);
+        uint256 overseerBurnIdCache = overseerBurnId;
+
+        bool isBurnRedeemable = IOverseer(overseer).redeemable(overseerBurnIdCache);
         // Check if current burn id needs to be redeemed
         if (isBurnRedeemable) {
-            IOverseer(overseer).redeem(overseerBurnId);
+            IOverseer(overseer).redeem(overseerBurnIdCache);
         } else {
-            // TODO: If it cannot be redeemed, we need to ensure that it has already been completed
+            // Need to ensure that this burn id has been completed
+            (,, bool completed,) = IOverseer(overseer).burns(overseerBurnIdCache);
+
+            if (!completed) {
+                revert stHYPEWithdrawalModule__update_burnIdNotCompleted(overseerBurnIdCache);
+            }
         }
 
         uint256 balance = address(this).balance;
@@ -556,6 +570,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         if (amountForPool > 0) {
             token1.safeTransfer(stexInterface.pool(), amountForPool);
         }
+
+        emit Update(balance, amountForPool, currentEpochId - 1);
     }
 
     /**
