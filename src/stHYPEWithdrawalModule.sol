@@ -198,9 +198,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     }
 
     /**
-     * @notice Returns the net amount of token0 shares in the contract.
-     * @dev This is used to correct the amount of token1 in the pool.
-     * @return The net amount of token0 shares in the contract.
+     * @notice Returns the net amount of token0 in the contract.
+     * @dev This is used to correct the amount of token0 in the pool.
      */
     function amount0Correction() public view override returns (int256) {
         int256 netShares = amountToken0SharesPendingUnstaking.toInt256()
