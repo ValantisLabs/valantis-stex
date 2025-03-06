@@ -40,10 +40,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         withdrawalModule = new stHYPEWithdrawalModule(address(overseer), owner);
         lendingModule = new AaveLendingModule(
-            address(lendingPool),
-            lendingPool.lendingPoolYieldToken(),
-            address(weth),
-            address(withdrawalModule)
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
 
         vm.startPrank(owner);
@@ -52,10 +49,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         withdrawalModule.setProposedLendingModule();
         vm.stopPrank();
 
-        assertEq(
-            address(withdrawalModule.lendingModule()),
-            address(lendingModule)
-        );
+        assertEq(address(withdrawalModule.lendingModule()), address(lendingModule));
         assertEq(withdrawalModule.owner(), owner);
 
         vm.startPrank(owner);
@@ -99,33 +93,17 @@ contract stHYPEWithdrawalModuleTest is Test {
     /**
      * **
      */
-    function testDeploy()
-        public
-        returns (stHYPEWithdrawalModule withdrawalModuleDeployment)
-    {
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector
-        );
+    function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
         new stHYPEWithdrawalModule(address(0), address(this));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableInvalidOwner.selector,
-                address(0)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new stHYPEWithdrawalModule(address(overseer), address(0));
 
-        withdrawalModuleDeployment = new stHYPEWithdrawalModule(
-            address(overseer),
-            address(this)
-        );
+        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
-        assertEq(
-            address(withdrawalModuleDeployment.lendingModule()),
-            address(0)
-        );
+        assertEq(address(withdrawalModuleDeployment.lendingModule()), address(0));
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
     }
 
@@ -165,43 +143,46 @@ contract stHYPEWithdrawalModuleTest is Test {
         testAddClaimForPendingUnstakingShares();
 
         amount0Correction = withdrawalModule.amount0Correction();
-        assertEq(
-            amount0Correction,
-            -int256(_token0.sharesToBalance(0.5 ether))
-        );
+        assertEq(amount0Correction, -int256(_token0.sharesToBalance(0.5 ether)));
+    }
+
+    function testSetOverseerCommunityCode() public {
+        bytes32 emptyHash = keccak256("");
+        assertEq(keccak256(bytes(withdrawalModule.overseerCommunityCode())), emptyHash);
+
+        string memory code = "valantis";
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        withdrawalModule.setOverseerCommunityCode(code);
+
+        vm.startPrank(owner);
+
+        withdrawalModule.setOverseerCommunityCode(code);
+        assertEq(keccak256(bytes(withdrawalModule.overseerCommunityCode())), keccak256(bytes(code)));
+
+        vm.stopPrank();
     }
 
     function testSetSTEX() public {
         stHYPEWithdrawalModule withdrawalModuleDeployment = testDeploy();
 
         vm.prank(_pool);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                _pool
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _pool));
         withdrawalModuleDeployment.setSTEX(address(this));
 
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
         withdrawalModuleDeployment.setSTEX(address(0));
 
         withdrawalModuleDeployment.setSTEX(address(this));
         assertEq(withdrawalModuleDeployment.stex(), address(this));
 
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__setSTEX_AlreadySet
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__setSTEX_AlreadySet.selector);
         withdrawalModuleDeployment.setSTEX(_pool);
     }
 
     function testReceive() public {
         vm.deal(address(this), 1 ether);
-        (bool success, ) = address(withdrawalModule).call{value: 1 ether}("");
+        (bool success,) = address(withdrawalModule).call{value: 1 ether}("");
         assertTrue(success);
         assertEq(address(withdrawalModule).balance, 1 ether);
     }
@@ -213,78 +194,26 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.startPrank(recipient);
 
         // Only callable by STEX
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector);
         withdrawalModule.addClaimForPreUnstakingShares(shares, recipient);
 
         vm.stopPrank();
 
         withdrawalModule.addClaimForPreUnstakingShares(shares, recipient);
         assertEq(withdrawalModule.idLPWithdrawal(), 1);
-        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(
-            0
-        );
+        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(0);
         assertEq(request.shares, shares);
         assertEq(request.recipient, recipient);
         assertEq(request.epochId, 0);
-        assertEq(
-            withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(),
-            shares
-        );
+        assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), shares);
     }
 
     function testAddClaimForPendingUnstakingShares() public {
         uint256 shares = 1 ether;
         address recipient = makeAddr("MOCK_RECIPIENT");
+        uint256 sharesToUnstake = 0.5 ether;
 
-        vm.startPrank(recipient);
-
-        // Only callable by STEX
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector
-        );
-        withdrawalModule.addClaimForPendingUnstakingShares(shares, recipient);
-
-        vm.stopPrank();
-
-        uint256 preIdLPWithdrawal = withdrawalModule.idLPWithdrawal();
-        uint256 preAmountToken0SharesPendingUnstakingLPWithdrawal = withdrawalModule
-                .amountToken0SharesPendingUnstakingLPWithdrawal();
-        uint256 preEpochId = withdrawalModule.currentEpochId();
-        LPWithdrawalRequest memory request;
-        if (preEpochId == 0) {
-            withdrawalModule.addClaimForPendingUnstakingShares(
-                shares,
-                recipient
-            );
-
-            // No state changes, since there is no active pending unstaking request
-            assertEq(withdrawalModule.idLPWithdrawal(), preIdLPWithdrawal);
-            request = withdrawalModule.getLPWithdrawals(preIdLPWithdrawal);
-            assertEq(request.shares, 0);
-            assertEq(request.recipient, address(0));
-            assertEq(request.epochId, 0);
-            assertEq(
-                withdrawalModule
-                    .amountToken0SharesPendingUnstakingLPWithdrawal(),
-                preAmountToken0SharesPendingUnstakingLPWithdrawal
-            );
-        }
-
-        _unstakeToken0Reserves(shares / 2);
-
-        withdrawalModule.addClaimForPendingUnstakingShares(shares, recipient);
-        assertEq(withdrawalModule.idLPWithdrawal(), preIdLPWithdrawal + 1);
-        request = withdrawalModule.getLPWithdrawals(preIdLPWithdrawal);
-        assertEq(request.shares, shares);
-        assertEq(request.recipient, recipient);
-        assertEq(request.epochId, 0);
-        assertEq(withdrawalModule.currentEpochId(), preEpochId + 1);
-        assertEq(
-            withdrawalModule.amountToken0SharesPendingUnstakingLPWithdrawal(),
-            shares
-        );
+        _addClaimForPendingUnstakingShares(recipient, shares, sharesToUnstake);
     }
 
     function testUnstakeToken0Reserves() public {
@@ -296,14 +225,9 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         address recipient = makeAddr("MOCK_RECIPIENT");
         withdrawalModule.addClaimForPreUnstakingShares(1 ether, recipient);
-        assertEq(
-            withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(),
-            1 ether
-        );
+        assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), 1 ether);
         assertEq(withdrawalModule.idLPWithdrawal(), 1);
-        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(
-            0
-        );
+        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(0);
         assertEq(request.shares, 1 ether);
         assertEq(request.epochId, 0);
         assertEq(request.recipient, recipient);
@@ -315,9 +239,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         // When there are prior LP withdrawals pending,
         // the owner must unstake enough token0 to fulfill those
         vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares
-                .selector
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__unstakeToken0Reserves_insufficientShares.selector
         );
         withdrawalModule.unstakeToken0Reserves(1 ether - 1);
 
@@ -329,11 +251,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         address recipient = makeAddr("MOCK_RECIPIENT");
 
         vm.prank(recipient);
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__OnlySTEXOrOwner
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEXOrOwner.selector);
         withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
 
         vm.startPrank(owner);
@@ -368,24 +286,15 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     function testUpdate() public {
         // Only callable by owner
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.update();
 
         vm.startPrank(owner);
 
-        /*vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__update_zeroUnstakingRequestsStarted
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__update_zeroUnstakingRequestsStarted.selector);
         withdrawalModule.update();
 
-        _unstakeToken0Reserves(3 ether);
+        /*_unstakeToken0Reserves(3 ether);
         assertEq(address(withdrawalModule).balance, 0);
         assertEq(
             withdrawalModule.amountToken0SharesPendingUnstaking(),
@@ -530,41 +439,23 @@ contract stHYPEWithdrawalModuleTest is Test {
     function testLendingModuleProposal() public {
         address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
 
         vm.startPrank(owner);
 
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow.selector);
         withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days - 1);
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh.selector);
         withdrawalModule.proposeLendingModule(lendingModuleMock, 7 days + 1);
 
         withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
-        (
-            address lendingModuleProposed,
-            uint256 startTimestamp
-        ) = withdrawalModule.lendingModuleProposal();
+        (address lendingModuleProposed, uint256 startTimestamp) = withdrawalModule.lendingModuleProposal();
         assertEq(lendingModuleProposed, lendingModuleMock);
         assertEq(startTimestamp, block.timestamp + 3 days);
 
         vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive
-                .selector
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive.selector
         );
         withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
 
@@ -572,19 +463,13 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         uint256 snapshot = vm.snapshotState();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.cancelLendingModuleProposal();
 
         vm.startPrank(owner);
 
         withdrawalModule.cancelLendingModuleProposal();
-        (lendingModuleProposed, startTimestamp) = withdrawalModule
-            .lendingModuleProposal();
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
         assertEq(lendingModuleProposed, address(0));
         assertEq(startTimestamp, 0);
 
@@ -592,20 +477,13 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.revertToState(snapshot);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.setProposedLendingModule();
 
         vm.startPrank(owner);
 
         vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive
-                .selector
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive.selector
         );
         withdrawalModule.setProposedLendingModule();
 
@@ -614,67 +492,64 @@ contract stHYPEWithdrawalModuleTest is Test {
         withdrawalModule.setProposedLendingModule();
         assertEq(address(withdrawalModule.lendingModule()), lendingModuleMock);
 
-        (lendingModuleProposed, startTimestamp) = withdrawalModule
-            .lendingModuleProposal();
+        (lendingModuleProposed, startTimestamp) = withdrawalModule.lendingModuleProposal();
         assertEq(lendingModuleProposed, address(0));
         assertEq(startTimestamp, 0);
 
         vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal
-                .selector
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal.selector
         );
         withdrawalModule.setProposedLendingModule();
 
         vm.stopPrank();
     }
 
-    /*function _burnToken0AfterWithdraw(
-        uint256 amountToken0,
-        address recipient
-    ) private {
-        vm.prank(_pool);
-        vm.expectRevert(
-            stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector
-        );
-        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
+    function _addClaimForPendingUnstakingShares(address recipient, uint256 shares, uint256 sharesToUnstake) private {
+        vm.startPrank(recipient);
 
-        uint256 preAmountToken0PendingUnstaking = withdrawalModule
-            .amountToken0PendingUnstaking();
-        uint256 preAmountToken1PendingLPWithdrawal = withdrawalModule
-            .amountToken1PendingLPWithdrawal();
-        withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
-        // No token0 has been unstaked
-        assertEq(
-            withdrawalModule.amountToken0PendingUnstaking(),
-            preAmountToken0PendingUnstaking
-        );
-        assertEq(
-            withdrawalModule.amountToken1PendingLPWithdrawal(),
-            withdrawalModule.convertToToken1(amountToken0) +
-                preAmountToken1PendingLPWithdrawal
-        );
-        uint256 preId = withdrawalModule.idLPWithdrawal() - 1;
-        uint256 preAmountCumulative = withdrawalModule
-            .cumulativeAmountToken1ClaimableLPWithdrawal();
-        (address to, uint96 amount, uint256 amountCumulative) = withdrawalModule
-            .LPWithdrawals(preId);
-        assertEq(to, recipient);
-        assertEq(amount, withdrawalModule.convertToToken1(amountToken0));
-        assertEq(amountCumulative, preAmountCumulative);
-    }*/
+        // Only callable by STEX
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__OnlySTEX.selector);
+        withdrawalModule.addClaimForPendingUnstakingShares(shares, recipient);
+
+        vm.stopPrank();
+
+        uint256 preIdLPWithdrawal = withdrawalModule.idLPWithdrawal();
+        uint256 preAmountToken0SharesPendingUnstakingLPWithdrawal =
+            withdrawalModule.amountToken0SharesPendingUnstakingLPWithdrawal();
+        uint256 preEpochId = withdrawalModule.currentEpochId();
+        LPWithdrawalRequest memory request;
+        if (preEpochId == 0) {
+            withdrawalModule.addClaimForPendingUnstakingShares(shares, recipient);
+
+            // No state changes, since there is no active pending unstaking request
+            assertEq(withdrawalModule.idLPWithdrawal(), preIdLPWithdrawal);
+            request = withdrawalModule.getLPWithdrawals(preIdLPWithdrawal);
+            assertEq(request.shares, 0);
+            assertEq(request.recipient, address(0));
+            assertEq(request.epochId, 0);
+            assertEq(
+                withdrawalModule.amountToken0SharesPendingUnstakingLPWithdrawal(),
+                preAmountToken0SharesPendingUnstakingLPWithdrawal
+            );
+        }
+
+        _unstakeToken0Reserves(sharesToUnstake);
+
+        withdrawalModule.addClaimForPendingUnstakingShares(shares, recipient);
+        assertEq(withdrawalModule.idLPWithdrawal(), preIdLPWithdrawal + 1);
+        request = withdrawalModule.getLPWithdrawals(preIdLPWithdrawal);
+        assertEq(request.shares, shares);
+        assertEq(request.recipient, recipient);
+        assertEq(request.epochId, 0);
+        assertEq(withdrawalModule.currentEpochId(), preEpochId + 1);
+        assertEq(withdrawalModule.amountToken0SharesPendingUnstakingLPWithdrawal(), shares);
+    }
 
     function _unstakeToken0Reserves(uint256 amount) private {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         withdrawalModule.unstakeToken0Reserves(amount);
 
-        uint256 preToken0SharesPendingUnstaking = withdrawalModule
-            .amountToken0SharesPendingUnstaking();
+        uint256 preToken0SharesPendingUnstaking = withdrawalModule.amountToken0SharesPendingUnstaking();
         _token0.transfer(address(withdrawalModule), amount);
 
         uint256 unstakeAmount = _token0.balanceOf(address(this));
@@ -686,11 +561,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         );
 
         // Can only have one pending unstaking request at a time
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__unstakeToken0Reserves_pendingUnstaking.selector);
         withdrawalModule.unstakeToken0Reserves(amount);
 
         vm.stopPrank();

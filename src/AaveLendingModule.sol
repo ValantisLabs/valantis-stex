@@ -12,7 +12,9 @@ contract AaveLendingModule is ILendingModule, Ownable {
     using SafeERC20 for IERC20;
 
     IPool public immutable pool;
+
     address public immutable yieldToken;
+
     address public immutable asset;
 
     constructor(address _pool, address _yieldToken, address _asset, address _owner) Ownable(_owner) {
@@ -48,7 +50,8 @@ contract AaveLendingModule is ILendingModule, Ownable {
     function deposit(uint256 _amount) external onlyOwner {
         IERC20(asset).safeTransferFrom(msg.sender, address(this), _amount);
         IERC20(asset).forceApprove(address(pool), _amount);
-        IPool(pool).supply(asset, _amount, address(this), 0);
+
+        pool.supply(asset, _amount, address(this), 0);
     }
 
     /**

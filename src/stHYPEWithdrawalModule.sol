@@ -32,6 +32,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  EVENTS
      *
      */
+    event OverseerCommunityCodeSet(string communityCode);
     event STEXSet(address stex);
     event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
     event LPWithdrawalRequestClaimed(uint256 id);
@@ -130,6 +131,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice ID for the current unstaking epoch in the `overseer` contract.
      */
     uint256 public overseerBurnId;
+
+    /**
+     * @notice String label for community code in the `overseer` contract.
+     */
+    string public overseerCommunityCode;
 
     /**
      * @notice mapping from `idLPWithdrawal` to its respective `LPWithdrawalRequest` data.
@@ -245,6 +251,17 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  EXTERNAL FUNCTIONS
      *
      */
+
+    /**
+     * @notice Sets the community code in the `overseer` contract.
+     * @dev Only callable by `owner`.
+     * @param _communityCode String community code to set.
+     */
+    function setOverseerCommunityCode(string memory _communityCode) external onlyOwner {
+        overseerCommunityCode = _communityCode;
+
+        emit OverseerCommunityCodeSet(_communityCode);
+    }
 
     /**
      * @notice Sets the AMM address.
@@ -398,13 +415,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         amountToken0SharesPendingUnstakingLPWithdrawal = amountToken0SharesPreUnstakingLPWithdrawal;
         amountToken0SharesPreUnstakingLPWithdrawal = 0;
 
+        // Increment to the next epoch id
         currentEpochId++;
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
         // depending on whether or not slashing happened.
         ERC20(token0).forceApprove(overseer, _amountToken0);
-        overseerBurnId = IOverseer(overseer).burnAndRedeemIfPossible(address(this), _amountToken0, "");
+        overseerBurnId =
+            IOverseer(overseer).burnAndRedeemIfPossible(address(this), _amountToken0, overseerCommunityCode);
     }
 
     /**
