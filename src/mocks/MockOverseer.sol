@@ -12,6 +12,8 @@ contract MockOverseer is IOverseer {
 
     bool public isCompromised;
 
+    bool public isSlashing;
+
     uint256 public burnId;
 
     mapping(uint256 => Burn) public burnsById;
@@ -20,6 +22,10 @@ contract MockOverseer is IOverseer {
 
     function setIsCompromised(bool value) public {
         isCompromised = value;
+    }
+
+    function setIsSlashing(bool value) public {
+        isSlashing = value;
     }
 
     function burns(uint256 id) external view returns (uint88, address, bool, uint256) {
@@ -56,7 +62,7 @@ contract MockOverseer is IOverseer {
 
         burnRequest.completed = true;
 
-        (bool success,) = burnRequest.to.call{value: burnRequest.amount}("");
+        (bool success,) = burnRequest.to.call{value: isSlashing ? burnRequest.amount / 2 : burnRequest.amount}("");
         require(success, "failed to send ETH");
     }
 }

@@ -495,6 +495,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         if (address(lendingModule) == address(0)) return;
         if (_amountToken1 == 0) return;
 
+        // if sender is owner, token1 amounts must be sent back to pool
         address recipient = msg.sender == stex ? _recipient : ISTEXAMM(stex).pool();
         address token1 = ISTEXAMM(stex).token1();
 

@@ -580,14 +580,14 @@ contract STEXAMMTest is Test {
         }
     }
 
-    function testWithdraw__WithdrawalModulePreUnstaking() public {
+    function testWithdraw__WithdrawalModule_LPsWithdrawBeforeUnstaking() public {
         address recipient1 = makeAddr("RECIPIENT_1");
         address recipient2 = makeAddr("RECIPIENT_2");
 
         // recipient1 deposits 10 eth
         stex.deposit(10 ether, 0, block.timestamp, recipient1);
 
-        // Adding 5 token0 to pool and removing 5 token1
+        // Adding 5e18 token0 to pool and removing 5e18 token1 (simulates a swap at 1:1 exchange rate)
 
         token0.transfer(address(pool), 5 ether);
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
@@ -602,6 +602,8 @@ contract STEXAMMTest is Test {
         assertEq(reserve0, 5 ether - 1);
         assertEq(reserve1, 5e18);
 
+        uint256 amount0Recipient1;
+        uint256 amount1Recipient1;
         // recipient1 withdraws
         {
             uint256 shares1 = stex.balanceOf(recipient1);
@@ -609,29 +611,30 @@ contract STEXAMMTest is Test {
             (uint256 amount0Simulation, uint256 amount1Simulation) =
                 stexLens.getAmountsForWithdraw(address(stex), shares1, false);
             vm.prank(recipient1);
-            (uint256 amount0, uint256 amount1) = stex.withdraw(shares1, 0, 0, block.timestamp, recipient1, false, false);
-            assertEq(amount0, amount0Simulation);
-            assertEq(amount1, amount1Simulation);
-            console.log(amount0);
-            console.log(amount1);
+            (amount0Recipient1, amount1Recipient1) =
+                stex.withdraw(shares1, 0, 0, block.timestamp, recipient1, false, false);
+            console.log("recipient1 amount0: ", amount0Recipient1);
+            console.log("recipient1 amount1: ", amount1Recipient1);
+            assertEq(amount0Recipient1, amount0Simulation);
+            assertEq(amount1Recipient1, amount1Simulation);
             (reserve0, reserve1) = pool.getReserves();
             // Unchanged, because no token0 has been unstaked
             assertEq(reserve0, 5 ether - 1);
             // amount1 was transferred to recipient1
-            assertEq(reserve1, 5e18 - amount1);
-            assertEq(weth.balanceOf(recipient1), amount1);
-            assertGt(amount0, 0);
+            assertEq(reserve1, 5e18 - amount1Recipient1);
+            assertEq(weth.balanceOf(recipient1), amount1Recipient1);
+            assertGt(amount0Recipient1, 0);
             assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
             LPWithdrawalRequest memory request1 = withdrawalModule.getLPWithdrawals(0);
             assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), request1.shares);
             // LP withdrawal request was created for recipient1
-            assertEq(token0.sharesToBalance(request1.shares), amount0);
+            assertEq(token0.sharesToBalance(request1.shares), amount0Recipient1);
             assertEq(request1.epochId, 0);
             assertEq(request1.recipient, recipient1);
             // Unstaking hasn't happened, so current epoch id remains the same
             assertEq(withdrawalModule.currentEpochId(), 0);
             int256 amount0Correction = withdrawalModule.amount0Correction();
-            assertEq(amount0Correction, -int256(amount0));
+            assertEq(amount0Correction, -int256(amount0Recipient1));
         }
 
         // recipient2 deposits 10 eth
@@ -642,26 +645,29 @@ contract STEXAMMTest is Test {
             stex.getAmountOut(address(token0), 1 ether);
         }
 
+        uint256 amount0Recipient2;
+        uint256 amount1Recipient2;
         // recipient2 withdraws
         {
             uint256 shares2 = stex.balanceOf(recipient2);
 
             vm.prank(recipient2);
-            (uint256 amount0, uint256 amount1) = stex.withdraw(shares2, 0, 0, block.timestamp, recipient2, false, false);
-            console.log(amount0);
-            console.log(amount1);
+            (amount0Recipient2, amount1Recipient2) =
+                stex.withdraw(shares2, 0, 0, block.timestamp, recipient2, false, false);
+            console.log("recipient2 amount0: ", amount0Recipient2);
+            console.log("recipient2 amount1: ", amount1Recipient2);
             (reserve0, reserve1) = pool.getReserves();
             // Unchanged, because no token0 has been unstaked
             assertEq(reserve0, 5 ether - 1);
             // amount1 was transferred to recipient2
-            assertEq(reserve1, 15e18 - weth.balanceOf(recipient1) - amount1);
-            assertEq(weth.balanceOf(recipient2), amount1);
-            assertGt(amount0, 0);
+            assertEq(reserve1, 15e18 - weth.balanceOf(recipient1) - amount1Recipient2);
+            assertEq(weth.balanceOf(recipient2), amount1Recipient2);
+            assertGt(amount0Recipient2, 0);
             assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
             LPWithdrawalRequest memory request2 = withdrawalModule.getLPWithdrawals(1);
             assertEq(request2.epochId, 0);
             assertEq(request2.recipient, recipient2);
-            assertEq(token0.sharesToBalance(request2.shares), amount0);
+            assertEq(token0.sharesToBalance(request2.shares), amount0Recipient2);
             assertEq(withdrawalModule.idLPWithdrawal(), 2);
             int256 amount0Correction = withdrawalModule.amount0Correction();
             assertLt(amount0Correction, -int256(0));
@@ -670,10 +676,16 @@ contract STEXAMMTest is Test {
         // Initiate unstaking of pool's token0 reserves
         withdrawalModule.unstakeToken0Reserves(reserve0);
         assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), 0);
-        assertGt(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
+        assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), token0.balanceToShares(reserve0));
+
+        // Total amount denominated in token1 should be the same for both users,
+        // up to 1000 wei which was paid by recipient1 on the first deposit
+        assertEq(amount0Recipient1 + amount1Recipient1 + 1000, amount0Recipient2 + amount1Recipient2);
+
+        uint256 snapshot = vm.snapshotState();
 
         // Process unstaking into token1
-        vm.deal(address(overseer), 20 ether);
+        vm.deal(address(overseer), 100 ether);
         withdrawalModule.update();
 
         assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
@@ -681,113 +693,37 @@ contract STEXAMMTest is Test {
 
         // recipient1 and recipient2 can claim, no slashing happened
 
-        // recipient1 gets approximately the original amount (10 eth),
-        // minus amount burnt in first deposit, minus rounding errors
+        // recipients will be able to claim their equivalent amount of token0 unstaked 1:1
+
         withdrawalModule.claim(0);
-        assertEq(recipient1.balance + weth.balanceOf(recipient1), 10e18 - 1000 - 2);
-        // recipient2 gets approximately the original amount (10 eth),
+        assertEq(recipient1.balance, amount0Recipient1);
+
+        withdrawalModule.claim(1);
+        assertEq(recipient2.balance, amount0Recipient2);
+
+        vm.revertToState(snapshot);
+
+        // Process unstaking into token1 after slashing occurred
+        overseer.setIsSlashing(true);
+        vm.deal(address(overseer), 100 ether);
+        withdrawalModule.update();
+        // 5 ether worth of token0 have been unstaked, but only half is redeemable due to slashing
+        assertEq(weth.balanceOf(address(withdrawalModule)) + weth.balanceOf(address(pool)), 5 ether / 2 + 1000);
+
+        assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
+        assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), 0);
+
+        // recipient1 and recipient2 can only claim 50% of their due amount, due to slashing
+
+        withdrawalModule.claim(0);
+        assertEq(recipient1.balance, amount0Recipient1 / 2);
+        // recipient2 gets approximately 50% of the original amount (5 eth),
         // minus rounding errors
         withdrawalModule.claim(1);
-        assertEq(recipient2.balance + weth.balanceOf(recipient2), 10e18 - 2);
+        assertEq(recipient2.balance, amount0Recipient2 / 2);
+        // 1 wei of dust left
+        assertEq(weth.balanceOf(address(withdrawalModule)), 1);
     }
-
-    // Skipping this test due to changes in the withdrawal module implementation
-    /*function testWithdraw__WithdrawalModule() public {
-        return;
-        // Tests withdrawal where token0 is sent to unstake via withdrawal module
-        address recipient = makeAddr("RECIPIENT");
-
-        _deposit(10e18, recipient);
-
-        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
-        assertEq(reserve0, 0);
-        assertEq(reserve1, 10e18 + 1e3 + 1);
-
-        // Mint token0 to the pool, giving it shares
-        token0.mint{value: 10e18}(address(pool));
-
-        (reserve0, reserve1) = pool.getReserves();
-        assertEq(reserve1, 10e18 + 1e3 + 1);
-        // We need to verify the pool has token0 shares
-        assertGt(token0.sharesOf(address(pool)), 0);
-
-        // Prepare withdrawal module for future unstaking process
-        token0.mint{value: 10e18}(address(withdrawalModule));
-
-        uint256 shares = stex.balanceOf(recipient);
-        assertGt(shares, 0);
-
-        vm.startPrank(recipient);
-
-        (uint256 amount0, uint256 amount1) = stex.withdraw(
-            shares,
-            0,
-            0,
-            block.timestamp,
-            recipient,
-            false,
-            false
-        );
-        assertEq(stex.balanceOf(recipient), 0);
-        assertEq(weth.balanceOf(recipient), amount1);
-        assertEq(token0.balanceOf(recipient), 0);
-        // Check LP withdrawal record was created correctly
-        assertEq(withdrawalModule.idLPWithdrawal(), 1);
-        // Check withdrawal request was created correctly
-        LPWithdrawalRequest memory req = withdrawalModule.getLPWithdrawals(0);
-        assertEq(req.recipient, recipient);
-        // Use shares for token0 in the new implementation
-        assertGt(req.shares, 0);
-
-        (reserve0, reserve1) = pool.getReserves();
-
-        vm.stopPrank();
-
-        // Mocks the processing of unstaking token0 by direct transfer of ETH
-        vm.deal(address(withdrawalModule), 20e18);
-        uint256 amountToken1PendingLPWithdrawal = 0;
-        (, uint96 amount, ) = withdrawalModule.LPWithdrawals(0);
-        amountToken1PendingLPWithdrawal = amount;
-
-        // Fulfills pending withdrawals and re-deposits remaining token1 amount into pool
-        withdrawalModule.update();
-        // token1 amount which was previously pending unstaking can now be claimed
-        // In the new implementation, there's no direct amountToken1ClaimableLPWithdrawal tracking
-        // No more LP withdrawals pending
-        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(
-            0
-        );
-        // In the new implementation, LPWithdrawalRequest uses shares instead of amount
-        assertEq(request.epochId, withdrawalModule.currentEpochId() - 1);
-        assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
-        // In the new implementation, there's no direct cumulativeAmountToken1ClaimableLPWithdrawal tracking
-        // Surplus token1 amount was sent to pool
-        {
-            (uint256 reserve0Post, uint256 reserve1Post) = pool.getReserves();
-            assertEq(
-                reserve1Post,
-                reserve1 + 20e18 - amountToken1PendingLPWithdrawal
-            );
-            assertEq(reserve0Post, reserve0);
-        }
-
-        // Claim LP's withdrawal request
-
-        withdrawalModule.claim(0);
-        assertEq(recipient.balance, amountToken1PendingLPWithdrawal);
-        // Claim has been processed in the new withdrawal module implementation
-        LPWithdrawalRequest memory reqAfterClaim = withdrawalModule
-            .getLPWithdrawals(0);
-        assertEq(reqAfterClaim.recipient, address(0));
-        assertEq(reqAfterClaim.shares, 0);
-
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__claim_alreadyClaimed
-                .selector
-        );
-        withdrawalModule.claim(0);
-    }*/
 
     function testWithdraw__FromLendingPool() public {
         address recipient = makeAddr("RECIPIENT");
