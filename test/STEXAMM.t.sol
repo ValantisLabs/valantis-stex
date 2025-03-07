@@ -75,6 +75,7 @@ contract STEXAMMTest is Test {
         withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
         vm.warp(block.timestamp + 3 days);
         withdrawalModule.setProposedLendingModule();
+        assertEq(address(withdrawalModule.lendingModule()), address(lendingModule));
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
         assertEq(swapFeeModule.owner(), owner);
@@ -519,7 +520,8 @@ contract STEXAMMTest is Test {
         vm.stopPrank();
     }
 
-    function testWithdraw() public {
+    function testWithdraw__LiquidToken1() public {
+        // Withdraw only from pool's liquid token1 reserves
         address recipient = makeAddr("RECIPIENT");
         (uint256 amount0Simulation, uint256 amount1Simulation) =
             stexLens.getAmountsForWithdraw(address(stex), 1e3 + 1, false);
@@ -574,6 +576,60 @@ contract STEXAMMTest is Test {
             uint256 postBalance = recipient.balance;
             assertGt(postBalance, preBalance);
             vm.stopPrank();
+        }
+    }
+
+    function testWithdraw__WithdrawalModulePreUnstaking() public {
+        // Tests claims for withdrawal module's token0 shares that have been burnt but not yet unstaked
+        address recipient1 = makeAddr("RECIPIENT_1");
+        address recipient2 = makeAddr("RECIPIENT_2");
+
+        _deposit(10 ether, recipient1);
+
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
+
+        token0.transfer(address(pool), 5 ether);
+        (reserve0,) = pool.getReserves();
+        // Rounding error on transfer because token0 is rebase
+        assertEq(token0.balanceOf(address(pool)), 5 ether - 1);
+        assertEq(reserve0, 5 ether - 1);
+
+        {
+            uint256 shares1 = stex.balanceOf(recipient1);
+
+            (uint256 amount0Simulation, uint256 amount1Simulation) =
+                stexLens.getAmountsForWithdraw(address(stex), shares1, false);
+            vm.prank(recipient1);
+            (uint256 amount0, uint256 amount1) = stex.withdraw(shares1, 0, 0, block.timestamp, recipient1, false, false);
+            assertEq(amount0, amount0Simulation);
+            assertEq(amount1, amount1Simulation);
+            (reserve0, reserve1) = pool.getReserves();
+            // Unchanged, because no token0 has been unstaked
+            assertEq(reserve0, 5 ether - 1);
+            // amount1 was transferred to recipient1
+            assertEq(reserve1, 10e18 + 1e3 + 1 - amount1);
+            assertEq(weth.balanceOf(recipient1), amount1);
+            assertGt(amount0, 0);
+            assertEq(withdrawalModule.amountToken0SharesPendingUnstaking(), 0);
+            LPWithdrawalRequest memory request1 = withdrawalModule.getLPWithdrawals(0);
+            assertEq(withdrawalModule.amountToken0SharesPreUnstakingLPWithdrawal(), request1.shares);
+            // LP withdrawal request was created for recipient1
+            assertEq(token0.sharesToBalance(request1.shares), amount0);
+            assertEq(request1.epochId, 0);
+            assertEq(request1.recipient, recipient1);
+            // Unstaking hasn't happened, so current epoch id remains the same
+            assertEq(withdrawalModule.currentEpochId(), 0);
+            int256 amount0Correction = withdrawalModule.amount0Correction();
+            assertEq(amount0Correction, -int256(amount0));
+        }
+
+        {
+            uint256 sharesSimulation = stexLens.getSharesForDeposit(address(stex), 10 ether);
+            uint256 shares = stex.deposit(10 ether, 0, block.timestamp, recipient2);
+            assertEq(sharesSimulation, shares);
+            stex.getAmountOut(address(token0), 1 ether);
         }
     }
 
@@ -688,6 +744,7 @@ contract STEXAMMTest is Test {
         weth.transfer(address(pool), 2 ether);
         withdrawalModule.supplyToken1ToLendingPool(2 ether);
         assertEq(withdrawalModule.amountToken1LendingPool(), 2 ether);
+        assertEq(weth.balanceOf(address(pool)), 10 ether + 1e3 + 1);
 
         uint256 shares = stex.balanceOf(recipient) / 2;
         assertGt(shares, 0);
@@ -708,6 +765,7 @@ contract STEXAMMTest is Test {
         (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, withdrawRecipient, true, true);
         assertEq(amount0, 0);
         assertEq(withdrawRecipient.balance, amount1);
+        assertLt(withdrawalModule.amountToken1LendingPool(), 2 ether);
     }
 
     function testWithdraw__InstantWithdrawal() public {
@@ -765,7 +823,13 @@ contract STEXAMMTest is Test {
 
         _addPoolReserves(0, 30 ether);
 
-        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        // Returns zero on invalid params
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), 0);
+        assertEq(amountOutEstimate, 0);
+        amountOutEstimate = stex.getAmountOut(address(0), params.amountIn);
+        assertEq(amountOutEstimate, 0);
+
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);

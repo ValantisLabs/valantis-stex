@@ -13,7 +13,6 @@ contract MockStHype is ERC20, IstHYPE {
     receive() external payable {}
 
     function mint(address to) external payable returns (uint256 shares) {
-        //shares = totalSupply() == 0 ? msg.value : balanceToShares(msg.value);
         shares = balanceToShares(msg.value);
         super._mint(to, shares);
     }
@@ -67,14 +66,5 @@ contract MockStHype is ERC20, IstHYPE {
 
     function balanceToShares(uint256 balance) public view returns (uint256) {
         return totalSupply() == 0 ? balance : (balance * totalSupply()) / address(this).balance;
-    }
-
-    // Keep old methods for backward compatibility
-    function sharesToAssets(uint256 shares) external view returns (uint256) {
-        return sharesToBalance(shares);
-    }
-
-    function assetsToShares(uint256 assets) public view returns (uint256) {
-        return balanceToShares(assets);
     }
 }

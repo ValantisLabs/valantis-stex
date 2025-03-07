@@ -587,7 +587,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     }
 
     /**
-     * @notice Called by the Sovereign pool to request a liquidity quote from this Liquidity Module.
+     * @notice Called by the Sovereign pool to request a swap quote from this Liquidity Module.
      * @param _almLiquidityQuoteInput Contains fundamental data about the swap.
      * @return quote Struct containing tokenIn and tokenOut amounts filled.
      */
