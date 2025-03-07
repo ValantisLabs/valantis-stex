@@ -364,7 +364,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @notice Allows the withdrawal module to transfer a portion of `token0` reserves from `pool`
      *         and send those to the staking protocol's native withdrawal queue.
      * @dev Only callable by `withdrawalModule`.
-     * @param _unstakeAmountToken0 Amount of `token0` reserves to unstake.
+     * @param _amountToken0 Amount of `token0` reserves to unstake.
      */
     function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override onlyWithdrawalModule nonReentrant {
         if (_unstakeAmountToken0 == 0) {

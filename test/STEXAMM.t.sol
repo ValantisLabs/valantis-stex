@@ -1117,7 +1117,7 @@ contract STEXAMMTest is Test {
         stex.unstakeToken0Reserves(amount);
 
         _addPoolReserves(10 ether, 0);
-        uint256 amountToken0ReservesFinal = token0.balanceOf(address(pool));
+
         vm.startPrank(address(withdrawalModule));
 
         stex.unstakeToken0Reserves(amount);

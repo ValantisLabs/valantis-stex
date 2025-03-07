@@ -527,7 +527,6 @@ contract stHYPEWithdrawalModuleTest is Test {
         uint256 preToken0SharesPendingUnstaking = _withdrawalModule.amountToken0SharesPendingUnstaking();
         _token0.transfer(address(_withdrawalModule), amount);
 
-        uint256 unstakeAmount = _token0.balanceOf(address(this));
         vm.startPrank(owner);
         _withdrawalModule.unstakeToken0Reserves(amount);
         assertEq(
