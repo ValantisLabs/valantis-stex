@@ -366,18 +366,18 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @dev Only callable by `withdrawalModule`.
      * @param _amountToken0 Amount of `token0` reserves to unstake.
      */
-    function unstakeToken0Reserves(uint256 _unstakeAmountToken0) external override onlyWithdrawalModule nonReentrant {
-        if (_unstakeAmountToken0 == 0) {
+    function unstakeToken0Reserves(uint256 _amountToken0) external override onlyWithdrawalModule nonReentrant {
+        if (_amountToken0 == 0) {
             revert STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
         }
         ISovereignPool poolInterface = ISovereignPool(pool);
 
         (uint256 reserve0,) = poolInterface.getReserves();
-        if (_unstakeAmountToken0 > reserve0) {
+        if (_amountToken0 > reserve0) {
             revert STEXAMM__unstakeToken0Reserves_amountTooHigh();
         }
-        poolInterface.withdrawLiquidity(_unstakeAmountToken0, 0, msg.sender, msg.sender, new bytes(0));
-        emit Token0ReservesUnstaked(_unstakeAmountToken0);
+        poolInterface.withdrawLiquidity(_amountToken0, 0, msg.sender, msg.sender, new bytes(0));
+        emit Token0ReservesUnstaked(_amountToken0);
     }
 
     /**
