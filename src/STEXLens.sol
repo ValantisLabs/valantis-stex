@@ -9,6 +9,9 @@ import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
+/**
+ * @notice Helper contract to simulate execution results from STEX AMM.
+ */
 contract STEXLens {
     struct WithdrawCache {
         uint256 reserve0Pool;
