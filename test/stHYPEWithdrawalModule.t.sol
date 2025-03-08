@@ -104,6 +104,21 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
     }
 
+    function testToken0Conversion() public {
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        uint256 amount0 = 1.1 ether;
+        uint256 amount1 = withdrawalModule.convertToToken1(amount0);
+        // token0 is rebase
+        assertEq(amount0, amount1);
+        assertEq(amount0, withdrawalModule.convertToToken0(amount1));
+
+        uint256 shares = withdrawalModule.token0BalanceToShares(amount0);
+        _token0.transfer(recipient, amount0);
+
+        assertEq(withdrawalModule.token0SharesOf(recipient), shares);
+        assertEq(withdrawalModule.token0SharesToBalance(shares), amount0);
+    }
+
     function testAmountToken1LendingPool() public {
         vm.startPrank(owner);
 
@@ -315,6 +330,14 @@ contract stHYPEWithdrawalModuleTest is Test {
         // User 2 can claim, similar scenario to user 1
         withdrawalModule.claim(1);
         assertEq(recipient2.balance, 2 ether);
+
+        // Simulate unstaking fulfillment
+        vm.deal(address(withdrawalModule), 0.1 ether);
+        withdrawalModule.update();
+
+        // User 3 can now claim
+        withdrawalModule.claim(2);
+        assertEq(recipient3.balance, 0.1 ether);
     }
 
     function testLendingModuleProposal() public {

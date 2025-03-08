@@ -181,6 +181,27 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         return _amountToken0;
     }
 
+    function token0SharesToBalance(uint256 _shares) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.sharesToBalance(_shares);
+    }
+
+    function token0BalanceToShares(uint256 _balance) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.balanceToShares(_balance);
+    }
+
+    function token0SharesOf(address _account) public view override returns (uint256) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IstHYPE token0 = IstHYPE(stexInterface.token0());
+
+        return token0.sharesOf(_account);
+    }
+
     /**
      * @notice Returns the LP withdrawal request for the given `_idLPWithdrawal`.
      * @param _idLPWithdrawal The ID of the LP withdrawal request to retrieve.
