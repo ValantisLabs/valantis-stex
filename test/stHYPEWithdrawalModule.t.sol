@@ -283,19 +283,30 @@ contract stHYPEWithdrawalModuleTest is Test {
         uint256 amount2 = 2 ether;
         address recipient2 = makeAddr("MOCK_RECIPIENT_2");
         _burnToken0AfterWithdraw(amount2, recipient2);
+        LPWithdrawalRequest memory request2 = withdrawalModule.getLPWithdrawals(1);
+        assertEq(request2.recipient, recipient2);
+        assertEq(request2.amountToken1, amount2);
+        assertEq(request2.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 0);
 
         // Simulate unstaking fulfillment
         vm.deal(address(withdrawalModule), 4 ether);
         withdrawalModule.update();
 
+        // 1 surplus WETH was transferred to pool
+        assertEq(weth.balanceOf(address(_pool)), 1 ether);
+
         // User 3 requests withdrawal (after unstaking fulfillment)
         uint256 amount3 = 0.1 ether;
         address recipient3 = makeAddr("MOCK_RECIPIENT_3");
         _burnToken0AfterWithdraw(amount3, recipient3);
+        LPWithdrawalRequest memory request3 = withdrawalModule.getLPWithdrawals(2);
+        assertEq(request3.recipient, recipient3);
+        assertEq(request3.amountToken1, amount3);
+        assertEq(request3.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 3 ether);
 
         // User 1 can claim, because it requested withdrawal before the call to `update`
         withdrawalModule.claim(0);
-        assertGt(recipient1.balance, 0);
+        assertEq(recipient1.balance, 1 ether);
 
         // User 3 cannot claim, because it requested withdrawal after the call to `update`
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_cannotYetClaim.selector);
@@ -303,7 +314,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         // User 2 can claim, similar scenario to user 1
         withdrawalModule.claim(1);
-        assertGt(recipient2.balance, 0);
+        assertEq(recipient2.balance, 2 ether);
     }
 
     function testLendingModuleProposal() public {
