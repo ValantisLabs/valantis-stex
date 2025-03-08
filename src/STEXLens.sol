@@ -7,7 +7,6 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
-import {IstHYPE} from "./interfaces/IStHYPE.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
 
