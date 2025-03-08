@@ -90,11 +90,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     address public immutable pool;
 
     /**
-     * @notice Address of Valantis Swap Fee Module.
-     */
-    address public immutable swapFeeModule;
-
-    /**
      * @notice Address of Liquid Staking token.
      */
     address public immutable token0;
@@ -181,8 +176,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         ISovereignPool(pool).setSwapFeeModule(_swapFeeModule);
         ISovereignPool(pool).setALM(address(this));
 
-        swapFeeModule = _swapFeeModule;
-
         poolFeeRecipient1 = _poolFeeRecipient1;
         poolFeeRecipient2 = _poolFeeRecipient2;
 
@@ -237,6 +230,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
             return 0;
         }
 
+        address swapFeeModule = ISovereignPool(pool).swapFeeModule();
         SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
             _tokenIn, address(0), _amountIn, address(0), new bytes(0)
         );
@@ -279,7 +273,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         swapFeeModuleProposal =
             SwapFeeModuleProposal({swapFeeModule: _swapFeeModule, startTimestamp: block.timestamp + _timelockDelay});
 
-        emit SwapFeeModuleProposed(swapFeeModule, block.timestamp + _timelockDelay);
+        emit SwapFeeModuleProposed(_swapFeeModule, block.timestamp + _timelockDelay);
     }
 
     /**
