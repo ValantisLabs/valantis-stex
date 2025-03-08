@@ -199,7 +199,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         uint256 balanceNative = address(this).balance;
         uint256 excessNative =
             balanceNative > amountToken1ClaimableLPWithdrawal ? balanceNative - amountToken1ClaimableLPWithdrawal : 0;
-        uint256 excessToken0 = excessNative > 0 ? convertToToken0(excessNative) : 0;
+        // stHYPE is rebase, hence no need for conversion
+        uint256 excessToken0 = excessNative > 0 ? excessNative : 0;
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
         if (amountToken0PendingUnstakingCache > excessToken0) {
@@ -314,9 +315,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         onlySTEX
         nonReentrant
     {
-        // stHYPE's balances represent shares,
-        // so we need to calculate the equivalent amount expected in token1 (equivalently, native token)
-        uint256 amountToken1 = convertToToken1(_amountToken0);
+        // stHYPE is rebase, hence to need for conversion
+        uint256 amountToken1 = _amountToken0;
 
         amountToken1PendingLPWithdrawal += amountToken1;
 
@@ -417,7 +417,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         // Having a surplus balance of native token means that new unstaking requests have been fulfilled
         uint256 balanceSurplus = address(this).balance - amountToken1ClaimableLPWithdrawalCache;
-        uint256 balanceSurplusToken0 = convertToToken0(balanceSurplus);
+        // stHYPE is rebase, hence no need for conversion
+        uint256 balanceSurplusToken0 = balanceSurplus;
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
         if (amountToken0PendingUnstakingCache > balanceSurplusToken0) {
