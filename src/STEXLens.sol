@@ -44,7 +44,7 @@ contract STEXLens {
         return shares;
     }
 
-    function getSharesForWithdraw(address stex, uint256 shares, bool isInstantWithdrawal)
+    function getAmountsForWithdraw(address stex, uint256 shares, bool isInstantWithdrawal)
         external
         view
         returns (uint256, uint256)

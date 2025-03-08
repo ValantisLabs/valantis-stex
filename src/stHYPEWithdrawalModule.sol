@@ -244,6 +244,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         emit STEXSet(_stex);
     }
 
+    /**
+     * @notice Propose an update to Lending Module.
+     * @dev Only callable by `owner`.
+     * @dev WARNING: This is a critical dependency which affects the solvency of the pool and this contract,
+     *      hence `owner` should have sufficient internal checks and protections.
+     * @param _lendingModule Address of new Lending Module to set.
+     * @param _timelockDelay 3-7 days timelock delay.
+     */
     function proposeLendingModule(address _lendingModule, uint256 _timelockDelay) external onlyOwner {
         _verifyTimelockDelay(_timelockDelay);
 
@@ -256,11 +264,19 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         emit LendingModuleProposed(_lendingModule, block.timestamp + _timelockDelay);
     }
 
+    /**
+     * @notice Cancel a pending update proposal to Lending Module.
+     * @dev Only callable by `owner`.
+     */
     function cancelLendingModuleProposal() external onlyOwner {
         emit LendingModuleProposalCancelled();
         delete lendingModuleProposal;
     }
 
+    /**
+     * @notice Set the proposed Lending Module after timelock has passed.
+     * @dev Only callable by `owner`.
+     */
     function setProposedLendingModule() external onlyOwner {
         if (lendingModuleProposal.startTimestamp > block.timestamp) {
             revert stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
@@ -283,7 +299,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @dev This contract will receive token1 in native form,
      *      as pending unstaking requests are settled.
      */
-    receive() external payable nonReentrant {}
+    receive() external payable {}
 
     /**
      * @notice This function gets called after an LP burns its LP tokens,
