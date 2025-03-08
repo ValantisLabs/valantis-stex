@@ -72,7 +72,7 @@ contract STEXAMMTest is Test {
         vm.warp(block.timestamp + 3 days);
         withdrawalModule.setProposedLendingModule();
 
-        swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
+        swapFeeModule = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
 
         stex = new STEXAMM(
@@ -125,10 +125,8 @@ contract STEXAMMTest is Test {
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        STEXRatioSwapFeeModule swapFeeModuleDeployment =
-            new STEXRatioSwapFeeModule(owner, address(withdrawalModuleDeployment));
+        STEXRatioSwapFeeModule swapFeeModuleDeployment = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModuleDeployment.owner(), owner);
-        assertEq(swapFeeModuleDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
