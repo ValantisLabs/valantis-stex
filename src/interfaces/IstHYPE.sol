@@ -2,9 +2,11 @@
 pragma solidity ^0.8.25;
 
 interface IstHYPE {
-    function assetsToShares(uint256 assets) external view returns (uint256);
-
-    function sharesToAssets(uint256 shares) external view returns (uint256);
-
     function balanceOf(address who) external view returns (uint256);
+
+    function sharesOf(address who) external view returns (uint256);
+
+    function sharesToBalance(uint256 shares) external view returns (uint256);
+
+    function balanceToShares(uint256 balance) external view returns (uint256);
 }

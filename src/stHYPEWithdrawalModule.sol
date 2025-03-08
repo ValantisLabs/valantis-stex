@@ -117,6 +117,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     /**
      * @notice Address of proposed lending module to interact with lending protocol.
+     * @dev WARNING: This is a critical dependency which can affect the solvency of the pool and this contract.
+     *      Updates to lending module happen under a 3-7 days timelock and assumes that `owner`
+     *      implements sufficient internal security checks.
      */
     LendingModuleProposal public lendingModuleProposal;
 
@@ -168,14 +171,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  VIEW FUNCTIONS
      *
      */
-    function convertToToken0(uint256 _amountToken1) public view override returns (uint256) {
-        address token0 = ISTEXAMM(stex).token0();
-        return IstHYPE(token0).assetsToShares(_amountToken1);
+    function convertToToken0(uint256 _amountToken1) public pure override returns (uint256) {
+        // stHYPE is rebase
+        return _amountToken1;
     }
 
-    function convertToToken1(uint256 _amountToken0) public view override returns (uint256) {
-        address token0 = ISTEXAMM(stex).token0();
-        return IstHYPE(token0).sharesToAssets(_amountToken0);
+    function convertToToken1(uint256 _amountToken0) public pure override returns (uint256) {
+        // stHYPE is rebase
+        return _amountToken0;
     }
 
     /**
@@ -357,7 +360,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         address token1 = stexInterface.token1();
 
         IWETH9(token1).forceApprove(address(lendingModule), _amountToken1);
-
+        // WARNING: Assumes that lending module deposits the total `_amountToken1` (no partial deposits)
         lendingModule.deposit(_amountToken1);
         emit AmountSuppliedToLendingModule(_amountToken1);
     }
@@ -377,8 +380,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         // Burn amountToken0 worth of token0 through withdrawal queue.
         // Once completed, an equivalent amount of native token1 should be transferred into this contract
-        // WARNING: token0 balances represent shares,
-        // hence the equivalent amount of token1 to be received is not 1:1
+        // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         ERC20(token0).forceApprove(overseer, amountToken0);
         IOverseer(overseer).burnAndRedeemIfPossible(address(this), amountToken0, "");
     }
@@ -391,6 +393,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     function update() external nonReentrant {
         // Need to ensure that enough native token is reserved for settled LP withdrawals
+        // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
         if (address(this).balance <= amountToken1ClaimableLPWithdrawalCache) {
             return;
@@ -439,6 +442,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @param _idLPQueue Id of LP's withdrawal request to claim.
      */
     function claim(uint256 _idLPQueue) external nonReentrant {
+        // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
+
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
         if (request.amountToken1 == 0) {
@@ -468,6 +473,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         Address.sendValue(payable(request.recipient), request.amountToken1);
     }
 
+    /**
+     *
+     *  PRIVATE FUNCTIONS
+     *
+     */
     function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
         if (_timelockDelay < MIN_TIMELOCK_DELAY) {
             revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();

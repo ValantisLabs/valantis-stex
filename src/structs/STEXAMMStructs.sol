@@ -5,3 +5,8 @@ struct SwapFeeModuleProposal {
     address swapFeeModule;
     uint256 startTimestamp;
 }
+
+struct WithdrawalModuleProposal {
+    address withdrawalModule;
+    uint256 startTimestamp;
+}

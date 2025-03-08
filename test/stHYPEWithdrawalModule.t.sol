@@ -60,18 +60,16 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
-        // Simulates a positive rebase
-        vm.deal(address(_token0), 20 ether);
         uint256 shares = _token0.mint{value: 100 ether}(address(this));
         assertEq(shares, 100 ether);
         assertEq(_token0.totalSupply(), shares);
         assertEq(_token0.balanceOf(address(this)), shares);
-        assertEq(address(_token0).balance, 120 ether);
+        assertEq(address(_token0).balance, 100 ether);
 
-        _token0.approve(address(withdrawalModule), type(uint256).max);
+        _token0.approve(address(withdrawalModule), 100 ether);
     }
 
-    // AMM mock functions
+    // AMM mock functions //
 
     function token0() external view returns (address) {
         return address(_token0);
@@ -90,6 +88,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     function supplyToken1Reserves(uint256 amount) external {
         weth.transfer(msg.sender, amount);
     }
+    // End of AMM mock functions //
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
@@ -275,6 +274,10 @@ contract stHYPEWithdrawalModuleTest is Test {
         address recipient1 = makeAddr("MOCK_RECIPIENT_1");
         // User 1 requests withdrawal (before unstaking fulfillment)
         _burnToken0AfterWithdraw(amount1, recipient1);
+        LPWithdrawalRequest memory request1 = withdrawalModule.getLPWithdrawals(0);
+        assertEq(request1.recipient, recipient1);
+        assertEq(request1.amountToken1, amount1);
+        assertEq(request1.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 0);
 
         // User 2 requests withdrawal (before unstaking fulfillment)
         uint256 amount2 = 2 ether;
