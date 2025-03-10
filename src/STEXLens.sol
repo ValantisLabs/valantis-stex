@@ -24,6 +24,29 @@ contract STEXLens {
     uint256 private constant MINIMUM_LIQUIDITY = 1e3;
     uint256 private constant BIPS = 1e4;
 
+    function getAllReserves(address stex)
+        external
+        view
+        returns (
+            uint256 reserve0Pool,
+            uint256 reserve0Unstaking,
+            uint256 reserve1Pool,
+            uint256 reserve1Lending,
+            uint256 amount1PendingLPWithdrawal
+        )
+    {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        IWithdrawalModule withdrawalModule = IWithdrawalModule(stexInterface.withdrawalModule());
+
+        (reserve0Pool, reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
+
+        reserve0Unstaking = withdrawalModule.amountToken0PendingUnstaking();
+
+        reserve1Lending = withdrawalModule.amountToken1LendingPool();
+
+        amount1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+    }
+
     function getSharesForDeposit(address stex, uint256 amount) external view returns (uint256) {
         ISTEXAMM stexInterface = ISTEXAMM(stex);
         uint256 totalSupplyCache = ERC20(stex).totalSupply();
