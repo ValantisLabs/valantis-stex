@@ -72,7 +72,7 @@ contract STEXAMMTest is Test {
         vm.warp(block.timestamp + 3 days);
         withdrawalModule.setProposedLendingModule();
 
-        swapFeeModule = new STEXRatioSwapFeeModule(owner, address(withdrawalModule));
+        swapFeeModule = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
 
         stex = new STEXAMM(
@@ -108,14 +108,14 @@ contract STEXAMMTest is Test {
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
         // Simulates a positive rebase
-        vm.deal(address(token0), 20 ether);
+        //vm.deal(address(token0), 20 ether);
         uint256 shares = token0.mint{value: 100 ether}(address(this));
         assertEq(shares, 100 ether);
         assertEq(token0.totalSupply(), shares);
         assertEq(token0.balanceOf(address(this)), shares);
-        assertEq(address(token0).balance, 120 ether);
+        assertEq(address(token0).balance, 100 ether);
 
-        token0.approve(address(pool), type(uint256).max);
+        token0.approve(address(pool), 100 ether);
         weth.approve(address(pool), type(uint256).max);
     }
 
@@ -125,10 +125,8 @@ contract STEXAMMTest is Test {
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        STEXRatioSwapFeeModule swapFeeModuleDeployment =
-            new STEXRatioSwapFeeModule(owner, address(withdrawalModuleDeployment));
+        STEXRatioSwapFeeModule swapFeeModuleDeployment = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModuleDeployment.owner(), owner);
-        assertEq(swapFeeModuleDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         new STEXAMM(
@@ -363,6 +361,66 @@ contract STEXAMMTest is Test {
 
         vm.expectRevert(STEXAMM.STEXAMM__setProposedSwapFeeModule_InactiveProposal.selector);
         stex.setProposedSwapFeeModule();
+
+        vm.stopPrank();
+    }
+
+    function testWithdrawalModuleProposal() public {
+        address withdrawalModuleMock = makeAddr("MOCK_WITHDRAWAL_MODULE");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.proposeWithdrawalModule(withdrawalModuleMock);
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
+        stex.proposeWithdrawalModule(address(0));
+
+        stex.proposeWithdrawalModule(withdrawalModuleMock);
+        (address withdrawalModuleProposed, uint256 startTimestamp) = stex.withdrawalModuleProposal();
+        assertEq(withdrawalModuleProposed, withdrawalModuleMock);
+        assertEq(startTimestamp, block.timestamp + 7 days);
+
+        vm.expectRevert(STEXAMM.STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive.selector);
+        stex.proposeWithdrawalModule(withdrawalModuleMock);
+
+        vm.stopPrank();
+
+        uint256 snapshot = vm.snapshotState();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.cancelWithdrawalModuleProposal();
+
+        vm.startPrank(owner);
+
+        stex.cancelWithdrawalModuleProposal();
+        (withdrawalModuleProposed, startTimestamp) = stex.withdrawalModuleProposal();
+        assertEq(withdrawalModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.stopPrank();
+
+        vm.revertToState(snapshot);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.setProposedWithdrawalModule();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedWithdrawalModule_Timelock.selector);
+        stex.setProposedWithdrawalModule();
+
+        vm.warp(block.timestamp + 7 days);
+
+        stex.setProposedWithdrawalModule();
+        assertEq(stex.withdrawalModule(), withdrawalModuleMock);
+
+        (withdrawalModuleProposed, startTimestamp) = stex.withdrawalModuleProposal();
+        assertEq(withdrawalModuleProposed, address(0));
+        assertEq(startTimestamp, 0);
+
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedWithdrawalModule_InactiveProposal.selector);
+        stex.setProposedWithdrawalModule();
 
         vm.stopPrank();
     }
@@ -691,6 +749,13 @@ contract STEXAMMTest is Test {
         address recipient = makeAddr("RECIPIENT");
         _setSwapFeeParams(3000, 5000, 1, 30);
 
+        {
+            uint256 amountOutSimulation = stex.getAmountOut(address(token0), 0);
+            assertEq(amountOutSimulation, 0);
+            amountOutSimulation = stex.getAmountOut(recipient, 1 ether);
+            assertEq(amountOutSimulation, 0);
+        }
+
         // Test token0 -> token1 swap (low price impact)
         SovereignPoolSwapParams memory params;
         params.isZeroToOne = true;
@@ -754,8 +819,8 @@ contract STEXAMMTest is Test {
         (amountInUsed, amountOut) = pool.swap(params);
         assertEq(amountInUsed, 1 ether);
         assertEq(amountOut, withdrawalModule.convertToToken0(1 ether));
-        // amountOut is in shares
-        assertApproxEqAbs(token0.sharesToAssets(amountOut), 1 ether, 1);
+        // amountOut is 1:1, because token0 is rebase
+        assertApproxEqAbs(amountOut, 1 ether, 1);
     }
 
     function testSwap__SplitAmountVsFullAmount() public {
@@ -858,10 +923,20 @@ contract STEXAMMTest is Test {
         stex.unstakeToken0Reserves(amountToken0ReservesInitial);
 
         _addPoolReserves(10 ether, 0);
+
         uint256 amountToken0ReservesFinal = token0.balanceOf(address(pool));
+
         vm.startPrank(address(withdrawalModule));
+
+        vm.expectRevert(STEXAMM.STEXAMM__unstakeToken0Reserves_amountCannotBeZero.selector);
+        stex.unstakeToken0Reserves(0);
+
+        vm.expectRevert(STEXAMM.STEXAMM__unstakeToken0Reserves_amountTooHigh.selector);
+        stex.unstakeToken0Reserves(10 ether + 1);
+
         stex.unstakeToken0Reserves(amountToken0ReservesFinal);
-        assertEq(token0.balanceOf(address(pool)), 0);
+        // 1 wei of dust, because token0 is rebase
+        assertEq(token0.balanceOf(address(pool)), 1);
     }
 
     function testUnstakeToken0ReservesPartial() public {

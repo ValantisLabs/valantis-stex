@@ -18,7 +18,7 @@ import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISwapFeeModuleMinimalView} from "./interfaces/ISwapFeeModuleMinimalView.sol";
-import {SwapFeeModuleProposal} from "./structs/STEXAMMStructs.sol";
+import {SwapFeeModuleProposal, WithdrawalModuleProposal} from "./structs/STEXAMMStructs.sol";
 
 /**
  * @title Stake Exchange AMM.
@@ -41,6 +41,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive();
     error STEXAMM__setProposedSwapFeeModule_InactiveProposal();
     error STEXAMM__setProposedSwapFeeModule_Timelock();
+    error STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive();
+    error STEXAMM__setProposedWithdrawalModule_InactiveProposal();
+    error STEXAMM__setProposedWithdrawalModule_Timelock();
     error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
     error STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
     error STEXAMM__unstakeToken0Reserves_amountTooHigh();
@@ -87,11 +90,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     address public immutable pool;
 
     /**
-     * @notice Address of Valantis Swap Fee Module.
-     */
-    address public immutable swapFeeModule;
-
-    /**
      * @notice Address of Liquid Staking token.
      */
     address public immutable token0;
@@ -107,13 +105,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     address public immutable poolFeeRecipient2;
 
     /**
-     * @notice Withdrawal Module.
-     * @dev This is the module which will interface with
-     *      token0's native withdrawal queue and/or token1's Lending Protocol integration.
-     */
-    IWithdrawalModule private immutable _withdrawalModule;
-
-    /**
      *
      *  STORAGE
      *
@@ -125,6 +116,22 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      *         *startTimestamp: Block timestamp after which this proposal can be applied by `owner`.
      */
     SwapFeeModuleProposal public swapFeeModuleProposal;
+
+    /**
+     * @notice Pending update proposal to Withdrawal Module.
+     *         *withdrawalModule: Address of new Withdrawal Module.
+     *         *startTimestamp: Block timestamp after which this proposal can be applied by `owner`.
+     */
+    WithdrawalModuleProposal public withdrawalModuleProposal;
+
+    /**
+     * @notice Withdrawal Module.
+     * @dev This is the module which will interface with
+     *      token0's native withdrawal queue and/or token1's Lending Protocol integration.
+     * @dev WARNING: This is a critical dependency which can affect the solvency of the pool.
+     *      Upgrades are made under 7 days timelock and expect the `owner` to have sufficient internal security checks.
+     */
+    IWithdrawalModule private _withdrawalModule;
 
     /**
      *
@@ -168,8 +175,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
 
         ISovereignPool(pool).setSwapFeeModule(_swapFeeModule);
         ISovereignPool(pool).setALM(address(this));
-
-        swapFeeModule = _swapFeeModule;
 
         poolFeeRecipient1 = _poolFeeRecipient1;
         poolFeeRecipient2 = _poolFeeRecipient2;
@@ -221,8 +226,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
      * @return amountOut Amount of output token received.
      */
     function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
-        if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) return 0;
+        if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) {
+            return 0;
+        }
 
+        address swapFeeModule = ISovereignPool(pool).swapFeeModule();
         SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
             _tokenIn, address(0), _amountIn, address(0), new bytes(0)
         );
@@ -265,7 +273,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         swapFeeModuleProposal =
             SwapFeeModuleProposal({swapFeeModule: _swapFeeModule, startTimestamp: block.timestamp + _timelockDelay});
 
-        emit SwapFeeModuleProposed(swapFeeModule, block.timestamp + _timelockDelay);
+        emit SwapFeeModuleProposed(_swapFeeModule, block.timestamp + _timelockDelay);
     }
 
     /**
@@ -298,6 +306,58 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         emit SwapFeeModuleSet(proposal.swapFeeModule);
 
         delete swapFeeModuleProposal;
+    }
+
+    /**
+     * @notice Propose an update to Withdrawal Module under a 7 days timelock.
+     * @dev Only callable by `owner`.
+     * @dev WARNING: This is a critical dependency which affects the solvency of LPs,
+     *      hence owner should have sufficient internal checks and protections.
+     * @param withdrawalModule_ Address of new Withdrawal Module to set.
+     */
+    function proposeWithdrawalModule(address withdrawalModule_) external override onlyOwner {
+        if (withdrawalModule_ == address(0)) revert STEXAMM__ZeroAddress();
+
+        if (withdrawalModuleProposal.startTimestamp > 0) {
+            revert STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive();
+        }
+
+        withdrawalModuleProposal =
+            WithdrawalModuleProposal({withdrawalModule: withdrawalModule_, startTimestamp: block.timestamp + 7 days});
+
+        emit WithdrawalModuleProposed(withdrawalModule_, block.timestamp + 7 days);
+    }
+
+    /**
+     * @notice Cancel a pending update proposal to Withdrawal Module.
+     * @dev Only callable by `owner`.
+     */
+    function cancelWithdrawalModuleProposal() external override onlyOwner {
+        emit WithdrawalModuleProposalCancelled();
+
+        delete withdrawalModuleProposal;
+    }
+
+    /**
+     * @notice Set the proposed Withdrawal Module in Sovereign Pool after a 7 days timelock delay.
+     * @dev Only callable by `owner`.
+     */
+    function setProposedWithdrawalModule() external override onlyOwner {
+        WithdrawalModuleProposal memory proposal = withdrawalModuleProposal;
+
+        if (proposal.startTimestamp == 0) {
+            revert STEXAMM__setProposedWithdrawalModule_InactiveProposal();
+        }
+
+        if (block.timestamp < proposal.startTimestamp) {
+            revert STEXAMM__setProposedWithdrawalModule_Timelock();
+        }
+
+        _withdrawalModule = IWithdrawalModule(proposal.withdrawalModule);
+
+        emit WithdrawalModuleSet(proposal.withdrawalModule);
+
+        delete withdrawalModuleProposal;
     }
 
     /**

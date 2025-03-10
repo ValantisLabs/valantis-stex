@@ -6,6 +6,7 @@ import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwa
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
 import {FeeParams} from "./structs/STEXRatioSwapFeeModuleStructs.sol";
+import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 import {ISTEXRatioSwapFeeModule} from "./interfaces/ISTEXRatioSwapFeeModule.sol";
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
 
@@ -36,11 +37,6 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
     uint256 private constant BIPS = 10_000;
 
     /**
-     * @notice Address of Withdrawal Module.
-     */
-    address public immutable withdrawalModule;
-
-    /**
      *
      *  STORAGE
      *
@@ -56,9 +52,7 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
      *  CONSTRUCTOR
      *
      */
-    constructor(address _owner, address _withdrawalModule) Ownable(_owner) {
-        withdrawalModule = _withdrawalModule;
-    }
+    constructor(address _owner) Ownable(_owner) {}
 
     /**
      *
@@ -84,10 +78,11 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
         bytes memory /*_swapFeeModuleContext*/
     ) external view override returns (SwapFeeModuleData memory swapFeeModuleData) {
         ISovereignPool poolInterface = ISovereignPool(pool);
+        ISTEXAMM stexInterface = ISTEXAMM(poolInterface.alm());
         // Fee is only applied on token0 -> token1 swaps
         if (_tokenIn == poolInterface.token0()) {
             (uint256 reserve0, uint256 reserve1) = poolInterface.getReserves();
-            IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(withdrawalModule);
+            IWithdrawalModule withdrawalModuleInterface = IWithdrawalModule(stexInterface.withdrawalModule());
 
             uint256 amount0PendingUnstaking = withdrawalModuleInterface.amountToken0PendingUnstaking();
             uint256 amountToken0PendingLPWithdrawal =

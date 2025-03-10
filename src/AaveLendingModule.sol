@@ -8,13 +8,28 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILendingModule} from "./interfaces/ILendingModule.sol";
 import {IPool} from "./interfaces/aavev3/IPool.sol";
 
+/**
+ * @notice Wrapper contract that allows its owner to lend an underlying token on AAVE V3 pools.
+ */
 contract AaveLendingModule is ILendingModule, Ownable {
     using SafeERC20 for IERC20;
 
+    /**
+     *
+     *  IMMUTABLES
+     *
+     */
     IPool public immutable pool;
+
     address public immutable yieldToken;
+
     address public immutable asset;
 
+    /**
+     *
+     *  CONSTRUCTOR
+     *
+     */
     constructor(address _pool, address _yieldToken, address _asset, address _owner) Ownable(_owner) {
         pool = IPool(_pool);
         yieldToken = _yieldToken;

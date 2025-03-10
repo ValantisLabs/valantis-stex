@@ -11,6 +11,12 @@ interface ISTEXAMM is ISovereignALM {
 
     event SwapFeeModuleSet(address swapFeeModule);
 
+    event WithdrawalModuleProposed(address withdrawalModule, uint256 startTimestamp);
+
+    event WithdrawalModuleProposalCancelled();
+
+    event WithdrawalModuleSet(address withdrawalModule);
+
     event PoolManagerFeeSet(uint256 poolManagerFeeBips);
 
     event PoolManagerFeesClaimed(uint256 fee0, uint256 fee1);
@@ -40,6 +46,12 @@ interface ISTEXAMM is ISovereignALM {
     function cancelSwapFeeModuleProposal() external;
 
     function setProposedSwapFeeModule() external;
+
+    function proposeWithdrawalModule(address withdrawalModule_) external;
+
+    function cancelWithdrawalModuleProposal() external;
+
+    function setProposedWithdrawalModule() external;
 
     function setPoolManagerFeeBips(uint256 _poolManagerFeeBips) external;
 

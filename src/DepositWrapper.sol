@@ -7,6 +7,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
 
+/**
+ * @notice Native token wrapper to deposit into Stake Exchange AMM.
+ */
 contract DepositWrapper {
     using SafeERC20 for IWETH9;
 
