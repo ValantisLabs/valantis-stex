@@ -15,6 +15,16 @@ contract MockOverseer is IOverseer {
 
     receive() external payable {}
 
+    function getBurnIds(address /*account*/ ) external pure override returns (uint256[] memory) {
+        // not implemented
+        return new uint256[](0);
+    }
+
+    function redeemable(uint256 /*_burnId*/ ) external pure override returns (bool) {
+        // not implemented
+        return false;
+    }
+
     function burnAndRedeemIfPossible(address to, uint256 amount, string memory /*_communityCode*/ )
         external
         override
@@ -39,5 +49,9 @@ contract MockOverseer is IOverseer {
 
         (bool success,) = burnRequest.to.call{value: burnRequest.amount}("");
         require(success, "failed to send ETH");
+    }
+
+    function redeem(uint256 /*_burnId*/ ) external override {
+        // not implemented
     }
 }

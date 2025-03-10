@@ -428,7 +428,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *      and any remaining native token is wrapped and transfered to
      *      the AMM's Sovereign Pool.
      */
-    function update() external nonReentrant {
+    function update() external override nonReentrant {
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
@@ -479,7 +479,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @dev Anyone can claim on behalf of its recipient.
      * @param _idLPQueue Id of LP's withdrawal request to claim.
      */
-    function claim(uint256 _idLPQueue) external nonReentrant {
+    function claim(uint256 _idLPQueue) external override nonReentrant {
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
 
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
