@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/STEXDeploy.s.sol:STEXDeployScript --rpc-url $RPC_URL
