@@ -40,6 +40,21 @@ contract STEXDeployScript is Script, Test {
             0x100d51E2caD5801F787087AfE2b87C10195B9218
         );
 
+        // Uncomment to set Swap Fee Module params
+        /*{
+            uint32 minThresholdRatioBips = 3_000;
+            uint32 maxThresholdRatioBips = 7_000;
+            uint32 feeMinBips = 1;
+            uint32 feeMaxBips = 40;
+
+            swapFeeModule.setSwapFeeParams(
+                minThresholdRatioBips,
+                maxThresholdRatioBips,
+                feeMinBips,
+                feeMaxBips
+            );
+        }*/
+
         // Uncomment for deployment
         /*stHYPEWithdrawalModule withdrawalModule = new stHYPEWithdrawalModule(
             overseer,
@@ -72,11 +87,11 @@ contract STEXDeployScript is Script, Test {
 
         address pool = stex.pool();
 
-        // Set STEX's pool in swap fee module
+        // Uncomment to set STEX's pool in swap fee module
         /*swapFeeModule.setPool(pool);
         assertEq(swapFeeModule.pool(), pool);
 
-        // Set STEX in withdrawal module
+        // Uncomment to set STEX in withdrawal module
         withdrawalModule.setSTEX(address(stex));
         assertEq(withdrawalModule.stex(), address(stex));
 

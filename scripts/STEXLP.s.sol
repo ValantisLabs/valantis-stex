@@ -27,7 +27,7 @@ contract STEXLPScript is Script, Test {
         );
 
         // Uncomment for deposits
-        /*uint256 amount = 0.1 ether;
+        /*uint256 amount = 1 ether;
         uint256 shares = stexLens.getSharesForDeposit(address(stex), amount);
 
         DepositWrapper depositWrapper = DepositWrapper(
