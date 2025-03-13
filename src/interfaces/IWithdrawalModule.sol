@@ -37,5 +37,11 @@ interface IWithdrawalModule {
 
     function burnToken0AfterWithdraw(uint256 _amountToken0, address _recipient) external;
 
+    function supplyToken1ToLendingPool(uint256 _amountToken1) external;
+
     function withdrawToken1FromLendingPool(uint256 _amountToken1, address _recipient) external;
+
+    function update() external;
+
+    function claim(uint256 _idLPQueue) external;
 }

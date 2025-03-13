@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/OverseerInteractions.s.sol:OverseerInteractionsScript --rpc-url $RPC_URL

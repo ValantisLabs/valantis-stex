@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/STEXLP.s.sol:STEXLPScript --rpc-url $RPC_URL

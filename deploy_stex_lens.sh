@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/STEXLensDeploy.s.sol:STEXLensDeployScript --rpc-url $RPC_URL
