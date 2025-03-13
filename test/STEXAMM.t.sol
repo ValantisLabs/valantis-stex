@@ -15,6 +15,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {STEXAMM} from "src/STEXAMM.sol";
+import {STEXLens} from "src/STEXLens.sol";
 import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
 import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/MockOverseer.sol";
@@ -27,6 +28,8 @@ import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
 contract STEXAMMTest is Test {
     STEXAMM stex;
+    STEXLens stexLens;
+
     STEXRatioSwapFeeModule swapFeeModule;
     stHYPEWithdrawalModule withdrawalModule;
 
@@ -59,6 +62,8 @@ contract STEXAMMTest is Test {
 
         token0 = new MockStHype();
         weth = new WETH();
+
+        stexLens = new STEXLens();
 
         lendingPool = new MockLendingPool(address(weth));
 
@@ -510,7 +515,9 @@ contract STEXAMMTest is Test {
 
         weth.approve(address(stex), type(uint256).max);
 
+        uint256 sharesSimulation = stexLens.getSharesForDeposit(address(stex), 1e3 + 1);
         uint256 shares = stex.deposit(1e3 + 1, 1, block.timestamp, recipient);
+        assertEq(shares, sharesSimulation);
         assertEq(shares, 1);
         assertEq(stex.balanceOf(address(1)), 1e3);
         assertEq(stex.balanceOf(recipient), 1);
@@ -520,12 +527,28 @@ contract STEXAMMTest is Test {
 
         // Test normal deposit
 
+        sharesSimulation = stexLens.getSharesForDeposit(address(stex), amount);
         shares = stex.deposit(amount, 0, block.timestamp, recipient);
+        assertEq(shares, sharesSimulation);
         assertEq(stex.balanceOf(address(1)), 1e3);
         assertEq(stex.balanceOf(recipient), shares + 1);
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve0, 0);
         assertEq(reserve1, amount + 1e3 + 1);
+
+        {
+            (
+                uint256 reserve0Pool,
+                uint256 reserve0Unstaking,
+                uint256 reserve1Pool,
+                uint256 reserve1Lending,
+                uint256 amount1PendingLPWithdrawal
+            ) = stexLens.getAllReserves(address(stex));
+            assertEq(reserve0Pool + reserve0Unstaking, reserve0);
+            assertEq(reserve1Pool, reserve1);
+            assertEq(reserve1Lending, 0);
+            assertEq(amount1PendingLPWithdrawal, 0);
+        }
     }
 
     function testDeposit__FromNativeToken() public {
@@ -566,6 +589,11 @@ contract STEXAMMTest is Test {
 
     function testWithdraw() public {
         address recipient = makeAddr("RECIPIENT");
+        {
+            (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(address(stex), 0, false);
+            assertEq(amount0, 0);
+            assertEq(amount1, 0);
+        }
         _deposit(1e18, recipient);
 
         uint256 shares = stex.balanceOf(recipient);
@@ -591,7 +619,13 @@ contract STEXAMMTest is Test {
 
         // Test regular withdrawal in liquid token1
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+        {
+            (uint256 amount0Simulation, uint256 amount1Simulation) =
+                stexLens.getAmountsForWithdraw(address(stex), shares, false);
+            (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
+            assertEq(amount0Simulation, amount0);
+            assertEq(amount1Simulation, amount1);
+        }
         assertEq(stex.balanceOf(recipient), 0);
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
@@ -737,7 +771,11 @@ contract STEXAMMTest is Test {
         vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
         (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
 
+        (uint256 amount0Simulation, uint256 amount1Simulation) =
+            stexLens.getAmountsForWithdraw(address(stex), shares, true);
         (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
+        assertEq(amount0Simulation, amount0);
+        assertEq(amount1Simulation, amount1);
         assertEq(amount0, 0);
         assertGt(amount1, 0);
         assertEq(weth.balanceOf(recipient), amount1);

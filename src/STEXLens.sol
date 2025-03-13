@@ -13,6 +13,11 @@ import {LPWithdrawalRequest} from "./structs/WithdrawalModuleStructs.sol";
  * @notice Helper contract to simulate execution results from STEX AMM.
  */
 contract STEXLens {
+    /**
+     *
+     *  CUSTOM INTERNAL STRUCTS
+     *
+     */
     struct WithdrawCache {
         uint256 reserve0Pool;
         uint256 reserve1Pool;
@@ -21,9 +26,19 @@ contract STEXLens {
         uint256 amount1Remaining;
     }
 
+    /**
+     *
+     *  CONSTANTS
+     *
+     */
     uint256 private constant MINIMUM_LIQUIDITY = 1e3;
     uint256 private constant BIPS = 1e4;
 
+    /**
+     *
+     *  VIEW FUNCTIONS
+     *
+     */
     function getAllReserves(address stex)
         external
         view
