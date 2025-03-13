@@ -77,6 +77,7 @@ contract WithdrawalModuleManager is Ownable {
     /**
      * @notice Allows `owner` to execute an arbitrary external call.
      * @dev Only callable by `owner`.
+     * @dev `owner` can call any function in `_withdrawalModule`, including keeper functions.
      * @param _withdrawalModule Address of Withdrawal Module, which should have this contract as its `owner`.
      * @param _payload Payload to execute.
      */

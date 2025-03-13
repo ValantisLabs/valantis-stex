@@ -8,6 +8,8 @@ import {STEXAMM} from "src/STEXAMM.sol";
 import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
 import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
+import {WithdrawalModuleManager} from "src/owner/WithdrawalModuleManager.sol";
+import {WithdrawalModuleKeeper} from "src/owner/WithdrawalModuleKeeper.sol";
 
 contract STEXDeployScript is Script, Test {
     function run() external {
@@ -105,6 +107,20 @@ contract STEXDeployScript is Script, Test {
         DepositWrapper depositWrapper = DepositWrapper(
             payable(0x408046F07a009A5BE4A8Ed3B26A68E382513A492)
         );
+
+        // Uncomment for deployment of withdrawal module's keeper
+        /*WithdrawalModuleKeeper keeper = new WithdrawalModuleKeeper(
+            deployerAddress
+        );
+        assertEq(keeper.owner(), deployerAddress);*/
+
+        // Uncomment for deployment of withdrawal module's owner
+        /*WithdrawalModuleManager manager = new WithdrawalModuleManager(
+            deployerAddress,
+            address(keeper)
+        );
+        assertEq(manager.owner(), deployerAddress);
+        assertEq(manager.keeper(), address(keeper));*/
 
         vm.stopBroadcast();
     }

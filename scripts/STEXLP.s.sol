@@ -41,7 +41,7 @@ contract STEXLPScript is Script, Test {
         console.log("shares deposited: ", sharesDeposited);*/
 
         // Uncomment for withdrawals
-        /*uint256 amount = 1e6;
+        uint256 amount = 1e16;
         bool isInstantWithdrawal = false;
 
         (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(
@@ -64,7 +64,7 @@ contract STEXLPScript is Script, Test {
         );
 
         console.log("amount0 withdraw: ", amount0Withdraw);
-        console.log("amount1 withdraw: ", amount1Withdraw);*/
+        console.log("amount1 withdraw: ", amount1Withdraw);
 
         vm.stopBroadcast();
     }

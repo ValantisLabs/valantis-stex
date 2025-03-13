@@ -32,7 +32,7 @@ contract STEXSwapScript is Script, Test {
         address token1 = stex.token1();
 
         address tokenIn = token0;
-        uint256 amount = 1 ether;
+        uint256 amount = 2 ether;
 
         uint256 amountOut = stex.getAmountOut(tokenIn, amount);
 
