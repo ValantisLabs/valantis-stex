@@ -308,12 +308,20 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             revert stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
         }
 
+        // Withdraw all token1 amount from lending module back into pool
         if (address(lendingModule) != address(0)) {
-            lendingModule.withdraw(lendingModule.assetBalance(), address(this));
+            uint256 amountToken1LendingModule = lendingModule.assetBalance();
+
+            if (amountToken1LendingModule > 0) {
+                lendingModule.withdraw(amountToken1LendingModule, ISTEXAMM(stex).pool());
+            }
         }
 
+        // Set new lending module
         lendingModule = ILendingModule(lendingModuleProposal.lendingModule);
+
         delete lendingModuleProposal;
+
         emit LendingModuleSet(address(lendingModule));
     }
 
