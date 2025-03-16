@@ -656,7 +656,6 @@ contract STEXAMMTest is Test {
 
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve1, 10e18 + 1e3 + 1);
-        //assertEq(reserve0, withdrawalModule.convertToToken0(10e18));
 
         uint256 shares = stex.balanceOf(recipient);
         assertGt(shares, 0);
@@ -681,26 +680,32 @@ contract STEXAMMTest is Test {
         // Mocks the processing of unstaking token0 by direct transfer of ETH
         vm.deal(address(withdrawalModule), 20e18);
         uint256 amountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+        // The following quantities are immediately updated after the ETH balance increase,
+        // even before `update` is called
+        assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
 
         // Fulfills pending withdrawals and re-deposits remaining token1 amount into pool
         withdrawalModule.update();
         // token1 amount which was previously pending unstaking can now be claimed
-        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1PendingLPWithdrawal);
-        // No more LP withdrawals pending
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1);
+        // These values have already been updated after the ETH transfer
         assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
-        assertEq(withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), amountToken1PendingLPWithdrawal);
+        assertEq(withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), amountToken1);
         // Surplus token1 amount was sent to pool
         {
             (uint256 reserve0Post, uint256 reserve1Post) = pool.getReserves();
-            assertEq(reserve1Post, reserve1 + 20e18 - amountToken1PendingLPWithdrawal);
+            assertEq(reserve1Post, reserve1 + 20e18 - amountToken1);
             assertEq(reserve0Post, reserve0);
         }
+        // amountToken1 ETH remains in the contract, to be claimed by previously pending LP withdrawal
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1);
 
         // Claim LP's withdrawal request
 
         withdrawalModule.claim(0);
-        assertEq(recipient.balance, amountToken1PendingLPWithdrawal);
+        assertEq(recipient.balance, amountToken1);
         assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0);
         (to, amountToken1, cumulativeAmount) = withdrawalModule.LPWithdrawals(0);
         assertEq(to, address(0));

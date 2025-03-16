@@ -27,8 +27,6 @@ contract OverseerInteractionsScript is Script, Test {
             0xc7267F6cc4B4f61a025A797ef03c11285E6b630C
         );
 
-        console.log(block.timestamp);
-
         uint256[] memory burnIds = overseer.getBurnIds(
             address(withdrawalModule)
         );

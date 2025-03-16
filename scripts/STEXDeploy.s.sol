@@ -112,7 +112,14 @@ contract STEXDeployScript is Script, Test {
         /*WithdrawalModuleKeeper keeper = new WithdrawalModuleKeeper(
             deployerAddress
         );
-        assertEq(keeper.owner(), deployerAddress);*/
+        assertEq(keeper.owner(), deployerAddress);
+        console.log("keeper deployed: ", address(keeper));*/
+        WithdrawalModuleKeeper keeper = WithdrawalModuleKeeper(
+            0x9B9Ce64d716aCe08fe88e9cbF3A53B3680470f61
+        );
+        /*address keeperEOA = 0x6Fa0b094b71EF7fcA715177242682bdf1954e2e8;
+        keeper.setKeeper(keeperEOA);
+        assertTrue(keeper.isKeeper(keeperEOA));*/
 
         // Uncomment for deployment of withdrawal module's owner
         /*WithdrawalModuleManager manager = new WithdrawalModuleManager(
@@ -121,6 +128,10 @@ contract STEXDeployScript is Script, Test {
         );
         assertEq(manager.owner(), deployerAddress);
         assertEq(manager.keeper(), address(keeper));*/
+        WithdrawalModuleManager manager = WithdrawalModuleManager(
+            withdrawalModule.owner()
+        );
+        //manager.setKeeper(address(keeper));
 
         vm.stopBroadcast();
     }
