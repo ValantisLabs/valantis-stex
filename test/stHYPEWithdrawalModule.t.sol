@@ -331,7 +331,9 @@ contract stHYPEWithdrawalModuleTest is Test {
         LPWithdrawalRequest memory request1 = _withdrawalModule.getLPWithdrawals(0);
         assertEq(request1.recipient, recipient1);
         assertEq(request1.amountToken1, amount1);
-        assertEq(request1.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 0);
+        assertEq(request1.cumulativeAmountToken1LPWithdrawalCheckpoint, 0);
+        assertEq(_withdrawalModule.cumulativeAmountToken1LPWithdrawal(), amount1);
+        assertEq(_withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), 0);
 
         // User 2 requests withdrawal (before unstaking fulfillment)
         uint256 amount2 = 2 ether;
@@ -340,11 +342,15 @@ contract stHYPEWithdrawalModuleTest is Test {
         LPWithdrawalRequest memory request2 = _withdrawalModule.getLPWithdrawals(1);
         assertEq(request2.recipient, recipient2);
         assertEq(request2.amountToken1, amount2);
-        assertEq(request2.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 0);
+        assertEq(request2.cumulativeAmountToken1LPWithdrawalCheckpoint, amount1);
+        assertEq(_withdrawalModule.cumulativeAmountToken1LPWithdrawal(), amount1 + amount2);
+        assertEq(_withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), 0);
 
         // Simulate unstaking fulfillment
         vm.deal(address(_withdrawalModule), 4 ether);
         _withdrawalModule.update();
+        assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), amount1 + amount2);
+        assertEq(_withdrawalModule.cumulativeAmountToken1LPWithdrawal(), amount1 + amount2);
 
         // 1 surplus WETH was transferred to pool
         assertEq(weth.balanceOf(address(_pool)), 1 ether);
@@ -356,7 +362,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         LPWithdrawalRequest memory request3 = _withdrawalModule.getLPWithdrawals(2);
         assertEq(request3.recipient, recipient3);
         assertEq(request3.amountToken1, amount3);
-        assertEq(request3.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint, 3 ether);
+        assertEq(request3.cumulativeAmountToken1LPWithdrawalCheckpoint, 3 ether);
 
         // User 1 can claim, because it requested withdrawal before the call to `update`
         assertTrue(stexLens.canClaim(address(this), 0));
@@ -387,6 +393,42 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         // User 3 already claimed
         assertFalse(stexLens.canClaim(address(this), 2));
+    }
+
+    function testClaimWithPriority__LaterWithdrawalsCannotJumpQueuePriority() public {
+        address recipient1 = makeAddr("RECIPIENT_1");
+        address recipient2 = makeAddr("RECIPIENT_2");
+
+        // user 1 creates a withdraw request
+        _burnToken0AfterWithdraw(10e18, recipient1);
+
+        // Simulate partial unstaking via `overseer`
+        vm.deal(address(_withdrawalModule), 5 ether);
+        _withdrawalModule.update();
+
+        // user2 creates a smaller withdraw request
+        _burnToken0AfterWithdraw(1e18, recipient2);
+
+        // More ETH gets unstaked, but not enough to fulfill both requests
+        vm.deal(address(_withdrawalModule), 10 ether);
+        _withdrawalModule.update();
+
+        // user2 tries to claim, but cannot because of queue priority
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_cannotYetClaim.selector);
+        _withdrawalModule.claim(1);
+
+        // user1 can claim
+        _withdrawalModule.claim(0);
+        assertEq(recipient1.balance, 10 ether);
+        assertEq(address(_withdrawalModule).balance, 0);
+
+        // More ETH gets unstaked via `overseer`
+        vm.deal(address(_withdrawalModule), 1 ether);
+        _withdrawalModule.update();
+
+        // user2 can now claim
+        _withdrawalModule.claim(1);
+        assertEq(recipient2.balance, 1 ether);
     }
 
     function testLendingModuleProposal() public {
@@ -486,6 +528,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         uint256 preAmountToken0PendingUnstaking = _withdrawalModule.amountToken0PendingUnstaking();
         uint256 preAmountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawal();
+        uint256 preAmountCumulative = _withdrawalModule.cumulativeAmountToken1LPWithdrawal();
         _withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
         // No token0 has been unstaked
         assertEq(_withdrawalModule.amountToken0PendingUnstaking(), preAmountToken0PendingUnstaking);
@@ -494,7 +537,6 @@ contract stHYPEWithdrawalModuleTest is Test {
             _withdrawalModule.convertToToken1(amountToken0) + preAmountToken1PendingLPWithdrawal
         );
         uint256 preId = _withdrawalModule.idLPWithdrawal() - 1;
-        uint256 preAmountCumulative = _withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal();
         (address to, uint96 amount, uint256 amountCumulative) = _withdrawalModule.LPWithdrawals(preId);
         assertEq(to, recipient);
         assertEq(amount, _withdrawalModule.convertToToken1(amountToken0));

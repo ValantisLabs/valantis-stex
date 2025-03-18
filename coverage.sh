@@ -1,1 +1,1 @@
-forge coverage --report lcov --no-match-coverage="src/mocks" && lcov --remove ./lcov.info -o ./lcov.info.pruned && genhtml lcov.info.pruned -o coverage/html && open coverage/html/index.html
+forge coverage --report lcov --no-match-coverage="(src/mocks|test)" && lcov --remove ./lcov.info -o ./lcov.info.pruned && genhtml lcov.info.pruned -o coverage/html && open coverage/html/index.html

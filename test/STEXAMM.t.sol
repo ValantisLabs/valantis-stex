@@ -679,7 +679,6 @@ contract STEXAMMTest is Test {
 
         // Mocks the processing of unstaking token0 by direct transfer of ETH
         vm.deal(address(withdrawalModule), 20e18);
-        uint256 amountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
         // The following quantities are immediately updated after the ETH balance increase,
         // even before `update` is called
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
