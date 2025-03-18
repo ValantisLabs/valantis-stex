@@ -149,7 +149,7 @@ contract STEXLens {
         // Check if it is the right time to claim (according to queue priority)
         if (
             withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal()
-                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
+                < request.cumulativeAmountToken1LPWithdrawalCheckpoint + request.amountToken1
         ) {
             return false;
         }

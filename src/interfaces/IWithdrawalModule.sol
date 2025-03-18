@@ -21,6 +21,8 @@ interface IWithdrawalModule {
 
     function amountToken1ClaimableLPWithdrawal() external view returns (uint256);
 
+    function cumulativeAmountToken1LPWithdrawal() external view returns (uint256);
+
     function cumulativeAmountToken1ClaimableLPWithdrawal() external view returns (uint256);
 
     function convertToToken0(uint256 _amountToken1) external view returns (uint256);

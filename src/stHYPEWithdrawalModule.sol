@@ -103,6 +103,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     uint256 public amountToken1ClaimableLPWithdrawal;
 
     /**
+     * @notice Cumulative amount of native `token1` owed to LP withdrawals.
+     */
+    uint256 public cumulativeAmountToken1LPWithdrawal;
+
+    /**
      * @notice Cumulative amount of native `token1` claimable by LP withdrawals.
      */
     uint256 public cumulativeAmountToken1ClaimableLPWithdrawal;
@@ -386,9 +391,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         LPWithdrawals[idLPWithdrawal] = LPWithdrawalRequest({
             recipient: _recipient,
             amountToken1: amountToken1.toUint96(),
-            cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint: cumulativeAmountToken1ClaimableLPWithdrawal
+            cumulativeAmountToken1LPWithdrawalCheckpoint: cumulativeAmountToken1LPWithdrawal
         });
         idLPWithdrawal++;
+
+        cumulativeAmountToken1LPWithdrawal += amountToken1;
     }
 
     /**
@@ -530,7 +537,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // Check if it is the right time to claim (according to queue priority)
         if (
             cumulativeAmountToken1ClaimableLPWithdrawal
-                < request.cumulativeAmountToken1ClaimableLPWithdrawalCheckpoint + request.amountToken1
+                < request.cumulativeAmountToken1LPWithdrawalCheckpoint + request.amountToken1
         ) {
             revert stHYPEWithdrawalModule__claim_cannotYetClaim();
         }
