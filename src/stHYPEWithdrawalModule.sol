@@ -91,11 +91,6 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     address public stex;
 
     /**
-     * @notice Amount of native `token1` which is owed to STEX AMM LPs who have burnt their LP tokens.
-     */
-    uint256 public amountToken1PendingLPWithdrawal;
-
-    /**
      * @notice Amount of native `token1` which is ready for eligible STEX AMM LPs to claim.
      */
     uint256 public amountToken1ClaimableLPWithdrawal;
@@ -130,8 +125,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     /**
      * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
+     * @dev This will change as excess native token balance gets added to this contract.
      */
     uint256 private _amountToken0PendingUnstaking;
+
+    /**
+     * @notice Amount of native `token1` which is owed to STEX AMM LPs who have burnt their LP tokens.
+     * @dev This will change as excess native token balance gets added to this contract.
+     */
+    uint256 public _amountToken1PendingLPWithdrawal;
 
     /**
      *
@@ -215,17 +217,32 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Tracks amount of token0 which is pending unstaking through `overseer`.
      * @dev It is assumed that `overseer` will replenish this contract with native token as
      *      unstaking requests get fulfilled.
+     * @dev This needs to be tracked as a function of surplus native token balance in this contract,
+     *      in order to maintain consistent accounting before `update` gets called.
      */
     function amountToken0PendingUnstaking() public view override returns (uint256) {
-        uint256 balanceNative = address(this).balance;
-        uint256 excessNative =
-            balanceNative > amountToken1ClaimableLPWithdrawal ? balanceNative - amountToken1ClaimableLPWithdrawal : 0;
-        // stHYPE is rebase, hence no need for conversion
-        uint256 excessToken0 = excessNative > 0 ? excessNative : 0;
+        // stHYPE is rebase, hence no need to convert from native to token0 balance
+        uint256 excessToken0 = _getExcessNativeBalance();
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
         if (amountToken0PendingUnstakingCache > excessToken0) {
             return amountToken0PendingUnstakingCache - excessToken0;
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * @notice Tracks amount of token1 which is owed to LP withdrawal requests.
+     * @dev This needs to be tracked as a function of surplus native token balance in this contract,
+     *      in order to maintain consistent accounting before `update` gets called.
+     */
+    function amountToken1PendingLPWithdrawal() public view override returns (uint256) {
+        uint256 excessNativeBalance = _getExcessNativeBalance();
+
+        uint256 amountToken1PendingLPWithdrawalCache = _amountToken1PendingLPWithdrawal;
+        if (amountToken1PendingLPWithdrawalCache > excessNativeBalance) {
+            return amountToken1PendingLPWithdrawalCache - excessNativeBalance;
         } else {
             return 0;
         }
@@ -308,12 +325,20 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             revert stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
         }
 
+        // Withdraw all token1 amount from lending module back into pool
         if (address(lendingModule) != address(0)) {
-            lendingModule.withdraw(lendingModule.assetBalance(), address(this));
+            uint256 amountToken1LendingModule = lendingModule.assetBalance();
+
+            if (amountToken1LendingModule > 0) {
+                lendingModule.withdraw(amountToken1LendingModule, ISTEXAMM(stex).pool());
+            }
         }
 
+        // Set new lending module
         lendingModule = ILendingModule(lendingModuleProposal.lendingModule);
+
         delete lendingModuleProposal;
+
         emit LendingModuleSet(address(lendingModule));
     }
 
@@ -339,7 +364,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // stHYPE is rebase, hence to need for conversion
         uint256 amountToken1 = _amountToken0;
 
-        amountToken1PendingLPWithdrawal += amountToken1;
+        _amountToken1PendingLPWithdrawal += amountToken1;
 
         emit LPWithdrawalRequestCreated(idLPWithdrawal, amountToken1, _recipient);
 
@@ -431,35 +456,29 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     function update() external override nonReentrant {
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
-        uint256 amountToken1ClaimableLPWithdrawalCache = amountToken1ClaimableLPWithdrawal;
-        if (address(this).balance <= amountToken1ClaimableLPWithdrawalCache) {
-            return;
-        }
-
-        // Having a surplus balance of native token means that new unstaking requests have been fulfilled
-        uint256 balanceSurplus = address(this).balance - amountToken1ClaimableLPWithdrawalCache;
-        // stHYPE is rebase, hence no need for conversion
-        uint256 balanceSurplusToken0 = balanceSurplus;
+        uint256 excessNativeBalance = _getExcessNativeBalance();
+        if (excessNativeBalance == 0) return;
 
         uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
-        if (amountToken0PendingUnstakingCache > balanceSurplusToken0) {
-            _amountToken0PendingUnstaking = amountToken0PendingUnstakingCache - balanceSurplusToken0;
+        // token0 is rebase, hence directly comparable against native token balance
+        if (amountToken0PendingUnstakingCache > excessNativeBalance) {
+            _amountToken0PendingUnstaking = amountToken0PendingUnstakingCache - excessNativeBalance;
         } else {
             _amountToken0PendingUnstaking = 0;
         }
 
-        // Prioritize LP withdrawal requests
-        uint256 amountToken1PendingLPWithdrawalCache = amountToken1PendingLPWithdrawal;
-        if (balanceSurplus > amountToken1PendingLPWithdrawalCache) {
-            balanceSurplus -= amountToken1PendingLPWithdrawalCache;
+        // Prioritize pending LP withdrawal requests
+        uint256 amountToken1PendingLPWithdrawalCache = _amountToken1PendingLPWithdrawal;
+        if (excessNativeBalance > amountToken1PendingLPWithdrawalCache) {
+            excessNativeBalance -= amountToken1PendingLPWithdrawalCache;
             amountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
             cumulativeAmountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
-            amountToken1PendingLPWithdrawal = 0;
+            _amountToken1PendingLPWithdrawal = 0;
         } else {
-            amountToken1PendingLPWithdrawal -= balanceSurplus;
-            amountToken1ClaimableLPWithdrawal += balanceSurplus;
-            cumulativeAmountToken1ClaimableLPWithdrawal += balanceSurplus;
-            balanceSurplus = 0;
+            _amountToken1PendingLPWithdrawal -= excessNativeBalance;
+            amountToken1ClaimableLPWithdrawal += excessNativeBalance;
+            cumulativeAmountToken1ClaimableLPWithdrawal += excessNativeBalance;
+            excessNativeBalance = 0;
             return;
         }
 
@@ -468,10 +487,10 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         address token1Address = stexInterface.token1();
         IWETH9 token1 = IWETH9(token1Address);
 
-        token1.deposit{value: balanceSurplus}();
+        token1.deposit{value: excessNativeBalance}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
-        token1.safeTransfer(stexInterface.pool(), balanceSurplus);
+        token1.safeTransfer(stexInterface.pool(), excessNativeBalance);
     }
 
     /**
@@ -516,6 +535,17 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  PRIVATE FUNCTIONS
      *
      */
+    function _getExcessNativeBalance() private view returns (uint256) {
+        // Calculates native token balance in excess of the balance already claimable by processed LP withdrawals
+        // This will be used to net against pending LP withdrawals, and any leftover can be transferred
+        // to STEX AMM's pool via `update`
+        uint256 balanceNative = address(this).balance;
+        uint256 excessBalanceNative =
+            balanceNative > amountToken1ClaimableLPWithdrawal ? balanceNative - amountToken1ClaimableLPWithdrawal : 0;
+
+        return excessBalanceNative;
+    }
+
     function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
         if (_timelockDelay < MIN_TIMELOCK_DELAY) {
             revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();

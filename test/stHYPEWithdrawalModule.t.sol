@@ -362,6 +362,17 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testLendingModuleProposal() public {
+        assertEq(address(_withdrawalModule.lendingModule()), address(lendingModule));
+
+        // Deposit some WETH into lending module
+        vm.startPrank(owner);
+
+        uint256 amount = 2 ether;
+        _withdrawalModule.supplyToken1ToLendingPool(2 ether);
+        assertEq(lendingModule.assetBalance(), 2 ether);
+
+        vm.stopPrank();
+
         address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
@@ -414,8 +425,13 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.warp(block.timestamp + 3 days);
 
+        uint256 preBalancePool = weth.balanceOf(address(_pool));
         _withdrawalModule.setProposedLendingModule();
         assertEq(address(_withdrawalModule.lendingModule()), lendingModuleMock);
+        // Old lending module's asset (WETH) balance is now 0, all of it has been transferred to `_pool`
+        uint256 postBalancePool = weth.balanceOf(address(_pool));
+        assertEq(lendingModule.assetBalance(), 0);
+        assertEq(postBalancePool - preBalancePool, amount);
 
         (lendingModuleProposed, startTimestamp) = _withdrawalModule.lendingModuleProposal();
         assertEq(lendingModuleProposed, address(0));
