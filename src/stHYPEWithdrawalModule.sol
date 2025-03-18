@@ -57,7 +57,6 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
     error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
     error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh();
-    error stHYPEWithdrawalModule__cancelLendingModuleProposal_ProposalNotActive();
     error stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
