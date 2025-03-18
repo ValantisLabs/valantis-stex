@@ -69,14 +69,6 @@ contract STEXAMMTest is Test {
 
         withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
 
-        lendingModule = new AaveLendingModule(
-            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
-        );
-
-        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
-        vm.warp(block.timestamp + 3 days);
-        withdrawalModule.setProposedLendingModule();
-
         swapFeeModule = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
 
@@ -99,6 +91,14 @@ contract STEXAMMTest is Test {
         vm.startPrank(owner);
         swapFeeModule.setPool(stex.pool());
         vm.stopPrank();
+
+        lendingModule = new AaveLendingModule(
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
+        );
+
+        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        vm.warp(block.timestamp + 3 days);
+        withdrawalModule.setProposedLendingModule();
 
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
         new DepositWrapper(address(0), address(stex));

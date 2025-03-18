@@ -11,6 +11,8 @@ interface IWithdrawalModule {
 
     function stex() external view returns (address);
 
+    function pool() external view returns (address);
+
     function amountToken0PendingUnstaking() external view returns (uint256);
 
     function amountToken1LendingPool() external view returns (uint256);

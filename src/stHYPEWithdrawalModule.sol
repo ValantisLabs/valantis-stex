@@ -8,6 +8,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
 import {IOverseer} from "./interfaces/IOverseer.sol";
 import {IstHYPE} from "./interfaces/IstHYPE.sol";
@@ -48,6 +49,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     error stHYPEWithdrawalModule__ZeroAddress();
     error stHYPEWithdrawalModule__OnlySTEX();
     error stHYPEWithdrawalModule__OnlySTEXOrOwner();
+    error stHYPEWithdrawalModule__PoolNonReentrant();
     error stHYPEWithdrawalModule__claim_alreadyClaimed();
     error stHYPEWithdrawalModule__claim_cannotYetClaim();
     error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
@@ -89,6 +91,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Address of Stake Exchange AMM (STEX AMM) deployment.
      */
     address public stex;
+
+    /**
+     * @notice Address of `stex` Sovereign Pool deployment.
+     */
+    address public pool;
 
     /**
      * @notice Amount of native `token1` which is ready for eligible STEX AMM LPs to claim.
@@ -164,6 +171,13 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     modifier onlySTEXOrOwner() {
         if (msg.sender != stex && msg.sender != owner()) {
             revert stHYPEWithdrawalModule__OnlySTEXOrOwner();
+        }
+        _;
+    }
+
+    modifier whenPoolNotLocked() {
+        if (ISovereignPool(pool).isLocked()) {
+            revert stHYPEWithdrawalModule__PoolNonReentrant();
         }
         _;
     }
@@ -267,7 +281,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
 
     /**
-     * @notice Sets the AMM address.
+     * @notice Sets the STEX AMM address and respective Sovereign Pool deployment.
      * @dev Callable by `owner` only once.
      * @param _stex Stake Exchange AMM address to set.
      */
@@ -279,6 +293,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         }
 
         stex = _stex;
+        pool = ISTEXAMM(_stex).pool();
 
         emit STEXSet(_stex);
     }
@@ -316,7 +331,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Set the proposed Lending Module after timelock has passed.
      * @dev Only callable by `owner`.
      */
-    function setProposedLendingModule() external onlyOwner {
+    function setProposedLendingModule() external onlyOwner whenPoolNotLocked {
         if (lendingModuleProposal.startTimestamp > block.timestamp) {
             revert stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
         }
@@ -330,7 +345,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             uint256 amountToken1LendingModule = lendingModule.assetBalance();
 
             if (amountToken1LendingModule > 0) {
-                lendingModule.withdraw(amountToken1LendingModule, ISTEXAMM(stex).pool());
+                lendingModule.withdraw(amountToken1LendingModule, pool);
             }
         }
 
@@ -391,11 +406,12 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         override
         onlySTEXOrOwner
         nonReentrant
+        whenPoolNotLocked
     {
         if (address(lendingModule) == address(0)) return;
         if (_amountToken1 == 0) return;
 
-        address recipient = msg.sender == stex ? _recipient : ISTEXAMM(stex).pool();
+        address recipient = msg.sender == stex ? _recipient : pool;
         address token1 = ISTEXAMM(stex).token1();
 
         uint256 preBalance = ERC20(token1).balanceOf(recipient);
@@ -453,7 +469,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *      and any remaining native token is wrapped and transfered to
      *      the AMM's Sovereign Pool.
      */
-    function update() external override nonReentrant {
+    function update() external override nonReentrant whenPoolNotLocked {
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         uint256 excessNativeBalance = _getExcessNativeBalance();
@@ -483,14 +499,13 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         }
 
         // Wrap native token into token1 and re-deposit into the pool
-        ISTEXAMM stexInterface = ISTEXAMM(stex);
-        address token1Address = stexInterface.token1();
+        address token1Address = ISTEXAMM(stex).token1();
         IWETH9 token1 = IWETH9(token1Address);
 
         token1.deposit{value: excessNativeBalance}();
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
-        token1.safeTransfer(stexInterface.pool(), excessNativeBalance);
+        token1.safeTransfer(pool, excessNativeBalance);
     }
 
     /**

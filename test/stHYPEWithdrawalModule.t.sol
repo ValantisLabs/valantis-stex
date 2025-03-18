@@ -14,6 +14,18 @@ import {AaveLendingModule} from "src/AaveLendingModule.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 import {STEXLens} from "src/STEXLens.sol";
 
+contract MockPool {
+    bool private _isLocked = false;
+
+    function isLocked() external view returns (bool) {
+        return _isLocked;
+    }
+
+    function setIsLocked(bool _value) external {
+        _isLocked = _value;
+    }
+}
+
 contract stHYPEWithdrawalModuleTest is Test {
     STEXLens stexLens;
 
@@ -27,7 +39,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     MockLendingPool lendingPool;
     AaveLendingModule lendingModule;
 
-    address private _pool = makeAddr("MOCK_POOL");
+    address private _pool;
 
     address public owner = makeAddr("OWNER");
 
@@ -39,11 +51,20 @@ contract stHYPEWithdrawalModuleTest is Test {
         _token0 = new MockStHype();
         weth = new WETH();
 
+        _pool = address(new MockPool());
+
         lendingPool = new MockLendingPool(address(weth));
         assertEq(lendingPool.underlyingAsset(), address(weth));
         assertEq(lendingPool.lendingPoolYieldToken(), address(lendingPool));
 
         _withdrawalModule = new stHYPEWithdrawalModule(address(overseer), owner);
+
+        vm.startPrank(owner);
+        // AMM will be mocked to make testing more flexible
+        _withdrawalModule.setSTEX(address(this));
+        assertEq(_withdrawalModule.stex(), address(this));
+        vm.stopPrank();
+
         lendingModule = new AaveLendingModule(
             address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(_withdrawalModule)
         );
@@ -56,12 +77,6 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         assertEq(address(_withdrawalModule.lendingModule()), address(lendingModule));
         assertEq(_withdrawalModule.owner(), owner);
-
-        vm.startPrank(owner);
-        // AMM will be mocked to make testing more flexible
-        _withdrawalModule.setSTEX(address(this));
-        assertEq(_withdrawalModule.stex(), address(this));
-        vm.stopPrank();
 
         vm.deal(address(this), 300 ether);
         weth.deposit{value: 100 ether}();
@@ -97,6 +112,7 @@ contract stHYPEWithdrawalModuleTest is Test {
     function supplyToken1Reserves(uint256 amount) external {
         weth.transfer(msg.sender, amount);
     }
+
     // End of AMM mock functions //
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
@@ -195,6 +211,12 @@ contract stHYPEWithdrawalModuleTest is Test {
         // Owner transfers liquidity from lending pool to sovereign pool
         _withdrawalModule.supplyToken1ToLendingPool(2 * amountToken1);
 
+        // Cannot be called when Sovereign Pool is locked, to prevent read-only reentrancy
+        MockPool(_pool).setIsLocked(true);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__PoolNonReentrant.selector);
+        _withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
+        MockPool(_pool).setIsLocked(false);
+
         _withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
         assertEq(weth.balanceOf(_pool), amountToken1);
         assertEq(weth.balanceOf(recipient), 0);
@@ -227,6 +249,12 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(address(_withdrawalModule).balance, 0);
         assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
         assertEq(_withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), 0);
+
+        // Cannot be called when Sovereign Pool is locked, to prevent read-only reentrancy
+        MockPool(_pool).setIsLocked(true);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__PoolNonReentrant.selector);
+        _withdrawalModule.update();
+        MockPool(_pool).setIsLocked(false);
 
         _unstakeToken0Reserves(3 ether);
         assertEq(address(_withdrawalModule).balance, 0);
@@ -417,6 +445,12 @@ contract stHYPEWithdrawalModuleTest is Test {
         _withdrawalModule.setProposedLendingModule();
 
         vm.startPrank(owner);
+
+        // Cannot be called when Sovereign Pool is locked, to prevent read-only reentrancy
+        MockPool(_pool).setIsLocked(true);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__PoolNonReentrant.selector);
+        _withdrawalModule.setProposedLendingModule();
+        MockPool(_pool).setIsLocked(false);
 
         vm.expectRevert(
             stHYPEWithdrawalModule.stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive.selector
