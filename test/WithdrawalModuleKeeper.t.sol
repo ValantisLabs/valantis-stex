@@ -57,7 +57,7 @@ contract WithdrawalModuleKeeperTest is Test {
         return burnIds;
     }
 
-    function redeemable(uint256 burnId) external view returns (bool) {
+    function redeemable(uint256 burnId) external pure returns (bool) {
         if (burnId == 1 || burnId > 2) return false;
 
         return true;
