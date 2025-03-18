@@ -44,7 +44,6 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive();
     error STEXAMM__setProposedWithdrawalModule_InactiveProposal();
     error STEXAMM__setProposedWithdrawalModule_Timelock();
-    error STEXAMM__setManagerFeeBips_invalidManagerFeeBips();
     error STEXAMM__unstakeToken0Reserves_amountCannotBeZero();
     error STEXAMM__unstakeToken0Reserves_amountTooHigh();
     error STEXAMM__withdraw_insufficientToken0Withdrawn();
