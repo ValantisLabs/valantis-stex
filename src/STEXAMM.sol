@@ -12,6 +12,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
@@ -23,7 +24,7 @@ import {SwapFeeModuleProposal, WithdrawalModuleProposal} from "./structs/STEXAMM
 /**
  * @title Stake Exchange AMM.
  */
-contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
+contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable {
     using SafeERC20 for ERC20;
 
     /**
@@ -254,6 +255,22 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     }
 
     /**
+     * @notice Pause STEX AMM Liquidity Module.
+     * @dev Only callable by `owner`.
+     */
+    function pause() external override onlyOwner whenNotPaused {
+        _pause();
+    }
+
+    /**
+     * @notice Unpause STEX AMM Liquidity Module.
+     * @dev Only callable by `owner`.
+     */
+    function unpause() external override onlyOwner whenPaused {
+        _unpause();
+    }
+
+    /**
      * @notice Propose an update to Swap Fee Module under a timelock.
      * @dev Only callable by `owner`.
      * @param _swapFeeModule Address of new Swap Fee Module to set.
@@ -455,6 +472,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         external
         override
         nonReentrant
+        whenNotPaused
         returns (uint256 shares)
     {
         _checkDeadline(_deadline);
@@ -632,7 +650,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
         bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
-    ) external view override returns (ALMLiquidityQuote memory quote) {
+    ) external view override whenNotPaused returns (ALMLiquidityQuote memory quote) {
         // Prevents read-only reentrancy via `SovereignPool::swap`,
         // while keeping `getLiquidityQuote` as read-only
         if (_reentrancyGuardEntered()) {

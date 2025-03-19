@@ -12,6 +12,7 @@ import {ALMLiquidityQuoteInput, ALMLiquidityQuote} from "@valantis-core/ALM/stru
 import {SovereignPoolSwapParams} from "@valantis-core/pools/structs/SovereignPoolStructs.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {STEXAMM} from "src/STEXAMM.sol";
@@ -305,6 +306,28 @@ contract STEXAMMTest is Test {
         assertEq(address(stex).balance, 1 ether);
     }
 
+    function testPause() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.pause();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        stex.unpause();
+
+        vm.startPrank(owner);
+
+        stex.pause();
+
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        stex.pause();
+
+        stex.unpause();
+
+        vm.expectRevert(Pausable.ExpectedPause.selector);
+        stex.unpause();
+
+        vm.stopPrank();
+    }
+
     function testSwapFeeModuleProposal() public {
         address swapFeeModuleMock = makeAddr("MOCK_SWAP_FEE_MODULE");
 
@@ -499,6 +522,15 @@ contract STEXAMMTest is Test {
     }
 
     function _deposit(uint256 amount, address recipient) private {
+        vm.prank(owner);
+        stex.pause();
+
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        stex.deposit(1e18, 0, block.timestamp - 1, recipient);
+
+        vm.prank(owner);
+        stex.unpause();
+
         vm.expectRevert(STEXAMM.STEXAMM___checkDeadline_expired.selector);
         stex.deposit(1e18, 0, block.timestamp - 1, recipient);
 
@@ -1007,7 +1039,7 @@ contract STEXAMMTest is Test {
         assertEq(weth.balanceOf(address(withdrawalModule)), amount);
     }
 
-    function testGetLiquidityQuote() public view {
+    function testGetLiquidityQuote() public {
         // Test token1 -> token0
         ALMLiquidityQuoteInput memory input;
         input.amountInMinusFee = 123e18;
@@ -1015,6 +1047,15 @@ contract STEXAMMTest is Test {
         assertEq(quote.amountInFilled, input.amountInMinusFee);
         // tokenOut=token0 balances represents shares of ETH
         assertEq(quote.amountOut, (input.amountInMinusFee * token0.totalSupply()) / address(token0).balance);
+
+        vm.prank(owner);
+        stex.pause();
+
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        stex.getLiquidityQuote(input, new bytes(0), new bytes(0));
+
+        vm.prank(owner);
+        stex.unpause();
 
         // Test token0 -> token1
         input.isZeroToOne = true;
