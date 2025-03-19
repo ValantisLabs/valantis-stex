@@ -36,6 +36,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
     error STEXAMM__ZeroAddress();
     error STEXAMM__deposit_lessThanMinShares();
     error STEXAMM__deposit_zeroShares();
+    error STEXAMM__getLiquidityQuote_nonReentrant();
     error STEXAMM__onSwapCallback_NotImplemented();
     error STEXAMM__receive_onlyWETH9();
     error STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive();
@@ -632,6 +633,12 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient {
         bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
     ) external view override returns (ALMLiquidityQuote memory quote) {
+        // Prevents read-only reentrancy via `SovereignPool::swap`,
+        // while keeping `getLiquidityQuote` as read-only
+        if (_reentrancyGuardEntered()) {
+            revert STEXAMM__getLiquidityQuote_nonReentrant();
+        }
+
         // The swap happens at 1:1 exchange rate,
         // given that the dynamic fee has already been applied
         // to the total tokenIn amount
