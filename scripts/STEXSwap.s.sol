@@ -32,7 +32,7 @@ contract STEXSwapScript is Script, Test {
         address token1 = stex.token1();
 
         address tokenIn = token0;
-        uint256 amount = 2 ether;
+        uint256 amount = 0.01 ether;
 
         uint256 amountOut = stex.getAmountOut(tokenIn, amount);
 
@@ -46,6 +46,8 @@ contract STEXSwapScript is Script, Test {
         params.recipient = deployerAddress;
 
         ISovereignPool pool = ISovereignPool(stex.pool());
+
+        console.log("pool: ", address(pool));
 
         ERC20(tokenIn).forceApprove(address(pool), params.amountIn);
 

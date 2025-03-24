@@ -96,6 +96,7 @@ contract STEXDeployScript is Script, Test {
         // Uncomment to set STEX in withdrawal module
         withdrawalModule.setSTEX(address(stex));
         assertEq(withdrawalModule.stex(), address(stex));
+        assertEq(withdrawalModule.pool(), pool);
 
         console.log("STEX AMM: ", address(stex));*/
 
