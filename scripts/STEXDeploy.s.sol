@@ -22,13 +22,16 @@ contract STEXDeployScript is Script, Test {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        // Address of owner multi-sig wallet
+        address ownerMultisig = 0xe26dA5cBf101bDA4028E2B3208c32424f5D09421;
+
         // stHYPE
         address token0 = 0xfFaa4a3D97fE9107Cef8a3F48c069F577Ff76cC1;
         // WHYPE
         address token1 = 0x5555555555555555555555555555555555555555;
 
         // Valantis Protocol Factory
-        address protocolFactory = 0x27c495e778386b57e9e9F309f4cF99DFc3103e1F;
+        address protocolFactory = 0x7E028ac56cB2AF75292F3D967978189698C24732;
 
         // Thunderhead's Overseer
         address overseer = 0xB96f07367e69e86d6e9C3F29215885104813eeAE;
@@ -39,8 +42,10 @@ contract STEXDeployScript is Script, Test {
         );
         assertEq(swapFeeModule.owner(), deployerAddress);*/
         STEXRatioSwapFeeModule swapFeeModule = STEXRatioSwapFeeModule(
-            0x100d51E2caD5801F787087AfE2b87C10195B9218
+            0xCeFb205eF3fa5398B02e8163F099ED274743cA0A
         );
+        //swapFeeModule.transferOwnership(ownerMultisig);
+        assertEq(swapFeeModule.owner(), ownerMultisig);
 
         // Uncomment to set Swap Fee Module params
         /*{
@@ -56,16 +61,28 @@ contract STEXDeployScript is Script, Test {
                 feeMaxBips
             );
         }*/
+        {
+            (
+                uint32 minThresholdRatioBips,
+                uint32 maxThresholdRatioBips,
+                uint32 feeMinBips,
+                uint32 feeMaxBips
+            ) = swapFeeModule.feeParams();
+            assertEq(minThresholdRatioBips, 3_000);
+            assertEq(maxThresholdRatioBips, 7_000);
+            assertEq(feeMinBips, 1);
+            assertEq(feeMaxBips, 40);
+        }
 
         // Uncomment for deployment
         /*stHYPEWithdrawalModule withdrawalModule = new stHYPEWithdrawalModule(
             overseer,
             deployerAddress
         );
-        //assertEq(withdrawalModule.owner(), deployerAddress);
-        //assertEq(withdrawalModule.overseer(), overseer);*/
+        assertEq(withdrawalModule.owner(), deployerAddress);
+        assertEq(withdrawalModule.overseer(), overseer);*/
         stHYPEWithdrawalModule withdrawalModule = stHYPEWithdrawalModule(
-            payable(0xc7267F6cc4B4f61a025A797ef03c11285E6b630C)
+            payable(0xC64399AFE18754ef940E3B0a089A232EDC4Bc77e)
         );
 
         // Uncomment for deployment
@@ -76,25 +93,28 @@ contract STEXDeployScript is Script, Test {
             token1,
             address(swapFeeModule),
             protocolFactory,
-            deployerAddress,
-            deployerAddress,
-            deployerAddress,
+            0xA2666B4dD1242Def4c3cf5731a85Aa8457fe01C1, // feeRecipient1
+            0x24577bacbd3B74C4065226a97e789023bba3296e, // feeRecipient2
+            deployerAddress, // owner
             address(withdrawalModule),
             10
         );
         assertEq(stex.owner(), deployerAddress);*/
         STEXAMM stex = STEXAMM(
-            payable(0x66416163b99265D3ADC3B54348c1F80ad34A016E)
+            payable(0x45f2b4A4cA043F44F468C126a03332D202626C7a)
         );
+        //stex.transferOwnership(ownerMultisig);
+        assertEq(stex.owner(), ownerMultisig);
 
         address pool = stex.pool();
+        console.log("STEX sovereign pool: ", pool);
 
         // Uncomment to set STEX's pool in swap fee module
         /*swapFeeModule.setPool(pool);
-        assertEq(swapFeeModule.pool(), pool);
+        assertEq(swapFeeModule.pool(), pool);*/
 
         // Uncomment to set STEX in withdrawal module
-        withdrawalModule.setSTEX(address(stex));
+        /*withdrawalModule.setSTEX(address(stex));
         assertEq(withdrawalModule.stex(), address(stex));
         assertEq(withdrawalModule.pool(), pool);
 
@@ -106,7 +126,7 @@ contract STEXDeployScript is Script, Test {
             address(stex)
         );*/
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0x408046F07a009A5BE4A8Ed3B26A68E382513A492)
+            payable(0xF25d259C16d986956bc5edcBFfCbc6503440b545)
         );
 
         // Uncomment for deployment of withdrawal module's keeper
@@ -116,11 +136,13 @@ contract STEXDeployScript is Script, Test {
         assertEq(keeper.owner(), deployerAddress);
         console.log("keeper deployed: ", address(keeper));*/
         WithdrawalModuleKeeper keeper = WithdrawalModuleKeeper(
-            0x9B9Ce64d716aCe08fe88e9cbF3A53B3680470f61
+            0xc6Fd57c740bb98f870a9992cf438514b21082682
         );
         /*address keeperEOA = 0x6Fa0b094b71EF7fcA715177242682bdf1954e2e8;
         keeper.setKeeper(keeperEOA);
         assertTrue(keeper.isKeeper(keeperEOA));*/
+        /*keeper.transferOwnership(ownerMultisig);*/
+        assertEq(keeper.owner(), ownerMultisig);
 
         // Uncomment for deployment of withdrawal module's owner
         /*WithdrawalModuleManager manager = new WithdrawalModuleManager(
@@ -130,9 +152,13 @@ contract STEXDeployScript is Script, Test {
         assertEq(manager.owner(), deployerAddress);
         assertEq(manager.keeper(), address(keeper));*/
         WithdrawalModuleManager manager = WithdrawalModuleManager(
-            withdrawalModule.owner()
+            0xD760A2c1180f0255086Ce17a28D4952E1758b175
         );
-        //manager.setKeeper(address(keeper));
+        /*manager.transferOwnership(ownerMultisig);
+        assertEq(manager.owner(), ownerMultisig);*/
+        assertEq(manager.owner(), ownerMultisig);
+        //withdrawalModule.transferOwnership(address(manager));
+        assertEq(withdrawalModule.owner(), address(manager));
 
         vm.stopBroadcast();
     }

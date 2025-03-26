@@ -20,29 +20,29 @@ contract STEXLPScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         STEXLens stexLens = STEXLens(
-            0xA7fe1f30d482A843bff5982dfb94f9eF9eEd0d7A
+            0xC1C9430044861D6e34745345EFCA710B482daC19
         );
         STEXAMM stex = STEXAMM(
-            payable(0x66416163b99265D3ADC3B54348c1F80ad34A016E)
+            payable(0x45f2b4A4cA043F44F468C126a03332D202626C7a)
         );
 
         // Uncomment for deposits
-        /*uint256 amount = 1 ether;
+        /*uint256 amount = 0.2 ether;
         uint256 shares = stexLens.getSharesForDeposit(address(stex), amount);
 
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0x408046F07a009A5BE4A8Ed3B26A68E382513A492)
+            payable(0xF25d259C16d986956bc5edcBFfCbc6503440b545)
         );
         uint256 sharesDeposited = depositWrapper.depositFromNative{
             value: amount
-        }(shares, block.timestamp + 120, deployerAddress);
+        }((shares * 9999) / 10_000, block.timestamp + 120, deployerAddress);
 
         console.log("shares expected: ", shares);
         console.log("shares deposited: ", sharesDeposited);*/
 
         // Uncomment for withdrawals
-        uint256 amount = 1e16;
-        bool isInstantWithdrawal = false;
+        /*uint256 amount = 1e16;
+        bool isInstantWithdrawal = true;
 
         (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(
             address(stex),
@@ -64,7 +64,7 @@ contract STEXLPScript is Script, Test {
         );
 
         console.log("amount0 withdraw: ", amount0Withdraw);
-        console.log("amount1 withdraw: ", amount1Withdraw);
+        console.log("amount1 withdraw: ", amount1Withdraw);*/
 
         vm.stopBroadcast();
     }
