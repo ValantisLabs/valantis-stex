@@ -51,15 +51,26 @@ contract STEXDeployScript is Script, Test {
         /*{
             uint32 minThresholdRatioBips = 3_000;
             uint32 maxThresholdRatioBips = 7_000;
-            uint32 feeMinBips = 1;
+            uint32 feeMinBips = 5;
             uint32 feeMaxBips = 40;
 
-            swapFeeModule.setSwapFeeParams(
+            bytes memory payload = abi.encodeWithSelector(
+                STEXRatioSwapFeeModule.setSwapFeeParams.selector,
                 minThresholdRatioBips,
                 maxThresholdRatioBips,
                 feeMinBips,
                 feeMaxBips
             );
+
+            console.log("payload for swapFeeModule.setSwapFeeParams: ");
+            console.logBytes(payload);
+
+            //swapFeeModule.setSwapFeeParams(
+            //    minThresholdRatioBips,
+            //    maxThresholdRatioBips,
+            //    feeMinBips,
+            //    feeMaxBips
+            //);
         }*/
         {
             (
@@ -70,7 +81,7 @@ contract STEXDeployScript is Script, Test {
             ) = swapFeeModule.feeParams();
             assertEq(minThresholdRatioBips, 3_000);
             assertEq(maxThresholdRatioBips, 7_000);
-            assertEq(feeMinBips, 1);
+            assertEq(feeMinBips, 5);
             assertEq(feeMaxBips, 40);
         }
 
@@ -108,6 +119,19 @@ contract STEXDeployScript is Script, Test {
 
         address pool = stex.pool();
         console.log("STEX sovereign pool: ", pool);
+
+        // Uncomment to set STEX's pool manager fees in bips
+        // 20%
+        uint256 managerFeeBips = 2_000;
+
+        bytes memory data = abi.encodeWithSelector(
+            STEXAMM.setPoolManagerFeeBips.selector,
+            managerFeeBips
+        );
+        console.log("payload for stex.setPoolManagerFeeBips: ");
+        console.logBytes(data);
+
+        //stex.setPoolManagerFeeBips(2_000);
 
         // Uncomment to set STEX's pool in swap fee module
         /*swapFeeModule.setPool(pool);
