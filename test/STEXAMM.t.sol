@@ -68,10 +68,7 @@ contract STEXAMMTest is Test {
 
         lendingPool = new MockLendingPool(address(weth));
 
-        withdrawalModule = new stHYPEWithdrawalModule(
-            address(overseer),
-            address(this)
-        );
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
@@ -97,10 +94,7 @@ contract STEXAMMTest is Test {
         vm.stopPrank();
 
         lendingModule = new AaveLendingModule(
-            address(lendingPool),
-            lendingPool.lendingPoolYieldToken(),
-            address(weth),
-            address(withdrawalModule)
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule)
         );
 
         withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
@@ -132,17 +126,12 @@ contract STEXAMMTest is Test {
     }
 
     function testDeploy() public {
-        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(
-                address(overseer),
-                address(this)
-            );
+        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        STEXRatioSwapFeeModule swapFeeModuleDeployment = new STEXRatioSwapFeeModule(
-                owner
-            );
+        STEXRatioSwapFeeModule swapFeeModuleDeployment = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModuleDeployment.owner(), owner);
 
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
@@ -229,12 +218,7 @@ contract STEXAMMTest is Test {
             address(withdrawalModuleDeployment),
             0
         );
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableInvalidOwner.selector,
-                address(0)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new STEXAMM(
             "Stake Exchange LP",
             "STEX LP",
@@ -281,37 +265,22 @@ contract STEXAMMTest is Test {
         assertEq(stexDeployment.poolFeeRecipient1(), poolFeeRecipient1);
         assertEq(stexDeployment.poolFeeRecipient2(), poolFeeRecipient2);
         assertEq(stexDeployment.owner(), owner);
-        assertEq(
-            stexDeployment.withdrawalModule(),
-            address(withdrawalModuleDeployment)
-        );
+        assertEq(stexDeployment.withdrawalModule(), address(withdrawalModuleDeployment));
 
         ISovereignPool poolDeployment = ISovereignPool(stexDeployment.pool());
         assertEq(poolDeployment.token0(), address(token0));
         assertEq(poolDeployment.token1(), address(weth));
         assertEq(poolDeployment.alm(), address(stexDeployment));
-        assertEq(
-            poolDeployment.swapFeeModule(),
-            address(swapFeeModuleDeployment)
-        );
+        assertEq(poolDeployment.swapFeeModule(), address(swapFeeModuleDeployment));
         assertEq(poolDeployment.poolManager(), address(stexDeployment));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         swapFeeModuleDeployment.setPool(address(poolDeployment));
 
         vm.startPrank(owner);
         swapFeeModuleDeployment.setPool(stexDeployment.pool());
         assertEq(swapFeeModuleDeployment.pool(), stexDeployment.pool());
-        vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setPool_alreadySet
-                .selector
-        );
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setPool_alreadySet.selector);
         swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
         vm.stopPrank();
 
@@ -321,43 +290,27 @@ contract STEXAMMTest is Test {
         vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
         new DepositWrapper(address(weth), address(0));
 
-        DepositWrapper nativeWrapperDeployment = new DepositWrapper(
-            address(weth),
-            address(stexDeployment)
-        );
-        assertEq(
-            address(nativeWrapperDeployment.stex()),
-            address(stexDeployment)
-        );
+        DepositWrapper nativeWrapperDeployment = new DepositWrapper(address(weth), address(stexDeployment));
+        assertEq(address(nativeWrapperDeployment.stex()), address(stexDeployment));
         assertEq(address(nativeWrapperDeployment.weth()), address(weth));
     }
 
     function testReceive() public {
         vm.expectRevert(STEXAMM.STEXAMM__receive_onlyWETH9.selector);
-        (bool success, ) = address(stex).call{value: 1 ether}("");
+        (bool success,) = address(stex).call{value: 1 ether}("");
         assertTrue(success);
 
         vm.prank(address(weth));
-        (success, ) = address(stex).call{value: 1 ether}("");
+        (success,) = address(stex).call{value: 1 ether}("");
         assertTrue(success);
         assertEq(address(stex).balance, 1 ether);
     }
 
     function testPause() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.pause();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.unpause();
 
         vm.startPrank(owner);
@@ -378,12 +331,7 @@ contract STEXAMMTest is Test {
     function testSwapFeeModuleProposal() public {
         address swapFeeModuleMock = makeAddr("MOCK_SWAP_FEE_MODULE");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
 
         vm.startPrank(owner);
@@ -391,36 +339,24 @@ contract STEXAMMTest is Test {
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         stex.proposeSwapFeeModule(address(0), 3 days);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooLow.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooLow.selector);
         stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days - 1);
-        vm.expectRevert(
-            STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooHigh.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM___verifyTimelockDelay_timelockTooHigh.selector);
         stex.proposeSwapFeeModule(swapFeeModuleMock, 7 days + 1);
 
         stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
-        (address swapFeeModuleProposed, uint256 startTimestamp) = stex
-            .swapFeeModuleProposal();
+        (address swapFeeModuleProposed, uint256 startTimestamp) = stex.swapFeeModuleProposal();
         assertEq(swapFeeModuleProposed, swapFeeModuleMock);
         assertEq(startTimestamp, block.timestamp + 3 days);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__proposeSwapFeeModule_ProposalAlreadyActive.selector);
         stex.proposeSwapFeeModule(swapFeeModuleMock, 3 days);
 
         vm.stopPrank();
 
         uint256 snapshot = vm.snapshotState();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.cancelSwapFeeModuleProposal();
 
         vm.startPrank(owner);
@@ -434,19 +370,12 @@ contract STEXAMMTest is Test {
 
         vm.revertToState(snapshot);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.setProposedSwapFeeModule();
 
         vm.startPrank(owner);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__setProposedSwapFeeModule_Timelock.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedSwapFeeModule_Timelock.selector);
         stex.setProposedSwapFeeModule();
 
         vm.warp(block.timestamp + 3 days);
@@ -458,9 +387,7 @@ contract STEXAMMTest is Test {
         assertEq(swapFeeModuleProposed, address(0));
         assertEq(startTimestamp, 0);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__setProposedSwapFeeModule_InactiveProposal.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedSwapFeeModule_InactiveProposal.selector);
         stex.setProposedSwapFeeModule();
 
         vm.stopPrank();
@@ -469,12 +396,7 @@ contract STEXAMMTest is Test {
     function testWithdrawalModuleProposal() public {
         address withdrawalModuleMock = makeAddr("MOCK_WITHDRAWAL_MODULE");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.proposeWithdrawalModule(withdrawalModuleMock);
 
         vm.startPrank(owner);
@@ -483,35 +405,24 @@ contract STEXAMMTest is Test {
         stex.proposeWithdrawalModule(address(0));
 
         stex.proposeWithdrawalModule(withdrawalModuleMock);
-        (address withdrawalModuleProposed, uint256 startTimestamp) = stex
-            .withdrawalModuleProposal();
+        (address withdrawalModuleProposed, uint256 startTimestamp) = stex.withdrawalModuleProposal();
         assertEq(withdrawalModuleProposed, withdrawalModuleMock);
         assertEq(startTimestamp, block.timestamp + 7 days);
 
-        vm.expectRevert(
-            STEXAMM
-                .STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive
-                .selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__proposeWithdrawalModule_ProposalAlreadyActive.selector);
         stex.proposeWithdrawalModule(withdrawalModuleMock);
 
         vm.stopPrank();
 
         uint256 snapshot = vm.snapshotState();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.cancelWithdrawalModuleProposal();
 
         vm.startPrank(owner);
 
         stex.cancelWithdrawalModuleProposal();
-        (withdrawalModuleProposed, startTimestamp) = stex
-            .withdrawalModuleProposal();
+        (withdrawalModuleProposed, startTimestamp) = stex.withdrawalModuleProposal();
         assertEq(withdrawalModuleProposed, address(0));
         assertEq(startTimestamp, 0);
 
@@ -519,19 +430,12 @@ contract STEXAMMTest is Test {
 
         vm.revertToState(snapshot);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.setProposedWithdrawalModule();
 
         vm.startPrank(owner);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__setProposedWithdrawalModule_Timelock.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedWithdrawalModule_Timelock.selector);
         stex.setProposedWithdrawalModule();
 
         vm.warp(block.timestamp + 7 days);
@@ -539,16 +443,11 @@ contract STEXAMMTest is Test {
         stex.setProposedWithdrawalModule();
         assertEq(stex.withdrawalModule(), withdrawalModuleMock);
 
-        (withdrawalModuleProposed, startTimestamp) = stex
-            .withdrawalModuleProposal();
+        (withdrawalModuleProposed, startTimestamp) = stex.withdrawalModuleProposal();
         assertEq(withdrawalModuleProposed, address(0));
         assertEq(startTimestamp, 0);
 
-        vm.expectRevert(
-            STEXAMM
-                .STEXAMM__setProposedWithdrawalModule_InactiveProposal
-                .selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__setProposedWithdrawalModule_InactiveProposal.selector);
         stex.setProposedWithdrawalModule();
 
         vm.stopPrank();
@@ -564,106 +463,38 @@ contract STEXAMMTest is Test {
         uint32 feeMinBips,
         uint32 feeMaxBips
     ) private {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.startPrank(owner);
 
         vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio
-                .selector
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio.selector
         );
-        swapFeeModule.setSwapFeeParams(
-            10_000,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        swapFeeModule.setSwapFeeParams(10_000, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio
-                .selector
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio.selector
         );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            10_000 + 1,
-            feeMinBips,
-            feeMaxBips
-        );
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, 10_000 + 1, feeMinBips, feeMaxBips);
 
         vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams
-                .selector
+            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector
         );
-        swapFeeModule.setSwapFeeParams(
-            maxThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        swapFeeModule.setSwapFeeParams(maxThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
-        vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            5_000,
-            feeMaxBips
-        );
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 5_000, feeMaxBips);
 
-        vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            5_000
-        );
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, 5_000);
 
-        vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams
-                .selector
-        );
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            2,
-            1
-        );
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams.selector);
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 2, 1);
 
-        swapFeeModule.setSwapFeeParams(
-            minThresholdRatioBips,
-            maxThresholdRatioBips,
-            feeMinBips,
-            feeMaxBips
-        );
+        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
-        (
-            uint32 minThresholdRatio,
-            uint32 maxThresholdRatio,
-            uint32 feeMin,
-            uint32 feeMax
-        ) = swapFeeModule.feeParams();
+        (uint32 minThresholdRatio, uint32 maxThresholdRatio, uint32 feeMin, uint32 feeMax) = swapFeeModule.feeParams();
         assertEq(minThresholdRatio, minThresholdRatioBips);
         assertEq(maxThresholdRatio, maxThresholdRatioBips);
         assertEq(feeMin, feeMinBips);
@@ -673,12 +504,7 @@ contract STEXAMMTest is Test {
     }
 
     function testSetPoolManagerFeeBips() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                address(this)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         stex.setPoolManagerFeeBips(1);
 
         vm.startPrank(owner);
@@ -721,10 +547,7 @@ contract STEXAMMTest is Test {
 
         weth.approve(address(stex), type(uint256).max);
 
-        uint256 sharesSimulation = stexLens.getSharesForDeposit(
-            address(stex),
-            1e3 + 1
-        );
+        uint256 sharesSimulation = stexLens.getSharesForDeposit(address(stex), 1e3 + 1);
         uint256 shares = stex.deposit(1e3 + 1, 1, block.timestamp, recipient);
         assertEq(shares, sharesSimulation);
         assertEq(shares, 1);
@@ -764,21 +587,13 @@ contract STEXAMMTest is Test {
         testDeposit();
 
         address recipient = makeAddr("NATIVE_TOKEN_RECIPIENT");
-        uint256 shares = nativeWrapper.depositFromNative(
-            0,
-            block.timestamp,
-            recipient
-        );
+        uint256 shares = nativeWrapper.depositFromNative(0, block.timestamp, recipient);
         // No native token has been sent
         assertEq(shares, 0);
 
         uint256 amount = 2 ether;
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        shares = nativeWrapper.depositFromNative{value: amount}(
-            0,
-            block.timestamp,
-            recipient
-        );
+        shares = nativeWrapper.depositFromNative{value: amount}(0, block.timestamp, recipient);
         assertGt(shares, 0);
         assertEq(weth.allowance(address(nativeWrapper), address(stex)), 0);
         assertEq(stex.balanceOf(recipient), shares);
@@ -826,11 +641,7 @@ contract STEXAMMTest is Test {
     function testWithdraw() public {
         address recipient = makeAddr("RECIPIENT");
         {
-            (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(
-                address(stex),
-                0,
-                false
-            );
+            (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(address(stex), 0, false);
             assertEq(amount0, 0);
             assertEq(amount1, 0);
         }
@@ -847,23 +658,11 @@ contract STEXAMMTest is Test {
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
         stex.withdraw(shares, 0, 0, block.timestamp, address(0), false, false);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
         stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, false);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__withdraw_insufficientToken1Withdrawn.selector
-        );
-        stex.withdraw(
-            shares,
-            0,
-            1e19,
-            block.timestamp,
-            recipient,
-            false,
-            false
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken1Withdrawn.selector);
+        stex.withdraw(shares, 0, 1e19, block.timestamp, recipient, false, false);
 
         vm.startPrank(recipient);
 
@@ -872,17 +671,9 @@ contract STEXAMMTest is Test {
         // Test regular withdrawal in liquid token1
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
         {
-            (uint256 amount0Simulation, uint256 amount1Simulation) = stexLens
-                .getAmountsForWithdraw(address(stex), shares, false);
-            (uint256 amount0, uint256 amount1) = stex.withdraw(
-                shares,
-                0,
-                0,
-                block.timestamp,
-                recipient,
-                false,
-                false
-            );
+            (uint256 amount0Simulation, uint256 amount1Simulation) =
+                stexLens.getAmountsForWithdraw(address(stex), shares, false);
+            (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
             assertEq(amount0Simulation, amount0);
             assertEq(amount1Simulation, amount1);
         }
@@ -922,28 +713,13 @@ contract STEXAMMTest is Test {
 
         vm.startPrank(recipient);
 
-        (uint256 amount0, uint256 amount1) = stex.withdraw(
-            shares,
-            0,
-            0,
-            block.timestamp,
-            recipient,
-            false,
-            false
-        );
+        (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, false);
         assertEq(stex.balanceOf(recipient), 0);
         assertEq(weth.balanceOf(recipient), amount1);
         assertEq(token0.balanceOf(recipient), 0);
-        assertEq(
-            withdrawalModule.amountToken1PendingLPWithdrawal(),
-            withdrawalModule.convertToToken1(amount0)
-        );
+        assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), withdrawalModule.convertToToken1(amount0));
         assertEq(withdrawalModule.idLPWithdrawal(), 1);
-        (
-            address to,
-            uint96 amountToken1,
-            uint256 cumulativeAmount
-        ) = withdrawalModule.LPWithdrawals(0);
+        (address to, uint96 amountToken1, uint256 cumulativeAmount) = withdrawalModule.LPWithdrawals(0);
         assertEq(amountToken1, withdrawalModule.convertToToken1(amount0));
         assertEq(cumulativeAmount, 0);
         assertEq(to, recipient);
@@ -962,17 +738,11 @@ contract STEXAMMTest is Test {
         // Fulfills pending withdrawals and re-deposits remaining token1 amount into pool
         withdrawalModule.update();
         // token1 amount which was previously pending unstaking can now be claimed
-        assertEq(
-            withdrawalModule.amountToken1ClaimableLPWithdrawal(),
-            amountToken1
-        );
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1);
         // These values have already been updated after the ETH transfer
         assertEq(withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
         assertEq(withdrawalModule.amountToken0PendingUnstaking(), 0);
-        assertEq(
-            withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(),
-            amountToken1
-        );
+        assertEq(withdrawalModule.cumulativeAmountToken1ClaimableLPWithdrawal(), amountToken1);
         // Surplus token1 amount was sent to pool
         {
             (uint256 reserve0Post, uint256 reserve1Post) = pool.getReserves();
@@ -980,28 +750,19 @@ contract STEXAMMTest is Test {
             assertEq(reserve0Post, reserve0);
         }
         // amountToken1 ETH remains in the contract, to be claimed by previously pending LP withdrawal
-        assertEq(
-            withdrawalModule.amountToken1ClaimableLPWithdrawal(),
-            amountToken1
-        );
+        assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), amountToken1);
 
         // Claim LP's withdrawal request
 
         withdrawalModule.claim(0);
         assertEq(recipient.balance, amountToken1);
         assertEq(withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0);
-        (to, amountToken1, cumulativeAmount) = withdrawalModule.LPWithdrawals(
-            0
-        );
+        (to, amountToken1, cumulativeAmount) = withdrawalModule.LPWithdrawals(0);
         assertEq(to, address(0));
         assertEq(amountToken1, 0);
         assertEq(cumulativeAmount, 0);
 
-        vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__claim_alreadyClaimed
-                .selector
-        );
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
         withdrawalModule.claim(0);
     }
 
@@ -1028,29 +789,14 @@ contract STEXAMMTest is Test {
 
         uint256 snapshot = vm.snapshotState();
 
-        (uint256 amount0, uint256 amount1) = stex.withdraw(
-            shares,
-            0,
-            0,
-            block.timestamp,
-            withdrawRecipient,
-            false,
-            true
-        );
+        (uint256 amount0, uint256 amount1) =
+            stex.withdraw(shares, 0, 0, block.timestamp, withdrawRecipient, false, true);
         assertEq(amount0, 0);
         assertEq(weth.balanceOf(withdrawRecipient), amount1);
 
         vm.revertToState(snapshot);
 
-        (amount0, amount1) = stex.withdraw(
-            shares,
-            0,
-            0,
-            block.timestamp,
-            withdrawRecipient,
-            true,
-            true
-        );
+        (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, withdrawRecipient, true, true);
         assertEq(amount0, 0);
         assertEq(withdrawRecipient.balance, amount1);
     }
@@ -1077,30 +823,12 @@ contract STEXAMMTest is Test {
         vm.startPrank(recipient);
 
         // Instant withdrawals are entirely in token1, hence amount min of token0 must be 0
-        vm.expectRevert(
-            STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector
-        );
-        (uint256 amount0, uint256 amount1) = stex.withdraw(
-            shares,
-            1,
-            0,
-            block.timestamp,
-            recipient,
-            false,
-            true
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
+        (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
 
-        (uint256 amount0Simulation, uint256 amount1Simulation) = stexLens
-            .getAmountsForWithdraw(address(stex), shares, true);
-        (amount0, amount1) = stex.withdraw(
-            shares,
-            0,
-            0,
-            block.timestamp,
-            recipient,
-            false,
-            true
-        );
+        (uint256 amount0Simulation, uint256 amount1Simulation) =
+            stexLens.getAmountsForWithdraw(address(stex), shares, true);
+        (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
         assertEq(amount0Simulation, amount0);
         assertEq(amount1Simulation, amount1);
         assertEq(amount0, 0);
@@ -1128,22 +856,11 @@ contract STEXAMMTest is Test {
         // Mocks the processing of unstaking token0 by direct transfer of ETH
         vm.deal(address(withdrawalModule), 0.123 ether);
 
-        stex.withdraw(
-            shares / 2,
-            0,
-            0,
-            block.timestamp,
-            recipient,
-            false,
-            false
-        );
+        stex.withdraw(shares / 2, 0, 0, block.timestamp, recipient, false, false);
         // WETH was transferred to the pool and recipient
         assertGt(weth.balanceOf(recipient), 0);
         assertEq(token0.balanceOf(recipient), 0);
-        assertEq(
-            weth.balanceOf(address(pool)),
-            reserve1 + 0.123 ether - weth.balanceOf(recipient)
-        );
+        assertEq(weth.balanceOf(address(pool)), reserve1 + 0.123 ether - weth.balanceOf(recipient));
         assertEq(address(withdrawalModule).balance, 0);
         assertEq(weth.balanceOf(address(withdrawalModule)), 0);
 
@@ -1155,11 +872,7 @@ contract STEXAMMTest is Test {
         _setSwapFeeParams(3000, 5000, 1, 30);
 
         {
-            uint256 amountOutSimulation = stex.getAmountOut(
-                address(token0),
-                0,
-                false
-            );
+            uint256 amountOutSimulation = stex.getAmountOut(address(token0), 0, false);
             assertEq(amountOutSimulation, 0);
             amountOutSimulation = stex.getAmountOut(recipient, 1 ether, false);
             assertEq(amountOutSimulation, 0);
@@ -1174,32 +887,19 @@ contract STEXAMMTest is Test {
         params.recipient = recipient;
 
         // zero token1 liquidity
-        vm.expectRevert(
-            STEXRatioSwapFeeModule
-                .STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1
-                .selector
-        );
+        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
         stex.getAmountOut(address(token0), params.amountIn, false);
 
         _addPoolReserves(0, 30 ether);
 
-        uint256 amountOutEstimate = stex.getAmountOut(
-            address(token0),
-            params.amountIn,
-            false
-        );
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
         assertEq(amountInUsed, 0.4 ether);
         assertEq(amountOut, amountOutEstimate);
-        SwapFeeModuleData memory swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            params.amountIn,
-            address(0),
-            new bytes(0)
-        );
+        SwapFeeModuleData memory swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
         // price impact was low, so fee is still at the minimum
         assertEq(swapFeeData.feeInBips, 1);
         assertEq(weth.balanceOf(recipient), amountOut);
@@ -1208,50 +908,30 @@ contract STEXAMMTest is Test {
         params.amountIn = 5 ether;
         (amountInUsed, amountOut) = pool.swap(params);
         assertEq(amountInUsed, 5 ether);
-        swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            params.amountIn,
-            address(0),
-            new bytes(0)
-        );
+        swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
         assertGt(swapFeeData.feeInBips, 1);
         assertLt(swapFeeData.feeInBips, 30);
 
         // Test token0 -> token1 swap (large price impact)
         params.amountIn = 10 ether;
-        amountOutEstimate = stex.getAmountOut(
-            address(token0),
-            params.amountIn,
-            false
-        );
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (amountInUsed, amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
         assertEq(amountOut, amountOutEstimate);
-        swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            0,
-            address(0),
-            new bytes(0)
-        );
+        swapFeeData = swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
         // This swap is large enough to push the fee to its maximum value of 30 bips
         assertEq(swapFeeData.feeInBips, 30);
 
         params.amountIn = 1 ether;
         // Fees in sovereign pool are applied as amountIn * BIPS / (BIPS + fee),
         // so we expect some discrepancies
-        uint256 amountOutExpectedApprox = withdrawalModule.convertToToken1(
-            (params.amountIn * (10_000 - 30)) / 10_000
-        );
+        uint256 amountOutExpectedApprox = withdrawalModule.convertToToken1((params.amountIn * (10_000 - 30)) / 10_000);
         (amountInUsed, amountOut) = pool.swap(params);
         assertEq(amountInUsed, 1 ether);
         // Discrepancy should not exceed 1 bips
-        assertEq(
-            (amountOut * 10_000) / amountOut,
-            (amountOutExpectedApprox * 10_000) / amountOutExpectedApprox
-        );
+        assertEq((amountOut * 10_000) / amountOut, (amountOutExpectedApprox * 10_000) / amountOutExpectedApprox);
 
         // Test token1 -> token0 swap
         params.isZeroToOne = false;
@@ -1286,58 +966,34 @@ contract STEXAMMTest is Test {
         params.swapTokenOut = address(weth);
         params.recipient = recipient;
 
-        uint256 amountOutEstimate = stex.getAmountOut(
-            address(token0),
-            params.amountIn,
-            false
-        );
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
         assertEq(amountInUsed, 5 ether);
         assertEq(amountOut, amountOutEstimate);
-        SwapFeeModuleData memory swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            params.amountIn,
-            address(0),
-            new bytes(0)
-        );
+        SwapFeeModuleData memory swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
         amountOutTotalSplitSwaps += amountOut;
 
         // token0 -> token1 split amount swap 2/2
         params.amountIn = 5 ether;
         (amountInUsed, amountOut) = pool.swap(params);
         assertEq(amountInUsed, 5 ether);
-        swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            params.amountIn,
-            address(0),
-            new bytes(0)
-        );
+        swapFeeData =
+            swapFeeModule.getSwapFeeInBips(address(token0), address(0), params.amountIn, address(0), new bytes(0));
         amountOutTotalSplitSwaps += amountOut;
 
         vm.revertToState(snapshot);
 
         // Test token0 -> token1 swap with full amount
         params.amountIn = 10 ether;
-        amountOutEstimate = stex.getAmountOut(
-            address(token0),
-            params.amountIn,
-            false
-        );
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (amountInUsed, amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
         assertEq(amountOut, amountOutEstimate);
-        swapFeeData = swapFeeModule.getSwapFeeInBips(
-            address(token0),
-            address(0),
-            0,
-            address(0),
-            new bytes(0)
-        );
+        swapFeeData = swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
         // Split swaps yields strictly worse trade execution
         assertLt(amountOutTotalSplitSwaps, amountOut);
     }
@@ -1394,14 +1050,10 @@ contract STEXAMMTest is Test {
 
         vm.startPrank(address(withdrawalModule));
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__unstakeToken0Reserves_amountCannotBeZero.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__unstakeToken0Reserves_amountCannotBeZero.selector);
         stex.unstakeToken0Reserves(0);
 
-        vm.expectRevert(
-            STEXAMM.STEXAMM__unstakeToken0Reserves_amountTooHigh.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__unstakeToken0Reserves_amountTooHigh.selector);
         stex.unstakeToken0Reserves(10 ether + 1);
 
         stex.unstakeToken0Reserves(amountToken0ReservesFinal);
@@ -1418,11 +1070,7 @@ contract STEXAMMTest is Test {
         uint256 amountToken0ReservesFinal = token0.balanceOf(address(pool));
         vm.startPrank(address(withdrawalModule));
         stex.unstakeToken0Reserves(amountToken0ReservesFinal / 2);
-        assertApproxEqAbs(
-            token0.balanceOf(address(pool)),
-            amountToken0ReservesFinal / 2,
-            1
-        );
+        assertApproxEqAbs(token0.balanceOf(address(pool)), amountToken0ReservesFinal / 2, 1);
     }
 
     function testSupplyToken1Reserves() public {
@@ -1443,18 +1091,10 @@ contract STEXAMMTest is Test {
         // Test token1 -> token0
         ALMLiquidityQuoteInput memory input;
         input.amountInMinusFee = 123e18;
-        ALMLiquidityQuote memory quote = stex.getLiquidityQuote(
-            input,
-            new bytes(0),
-            new bytes(0)
-        );
+        ALMLiquidityQuote memory quote = stex.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
         // tokenOut=token0 balances represents shares of ETH
-        assertEq(
-            quote.amountOut,
-            (input.amountInMinusFee * token0.totalSupply()) /
-                address(token0).balance
-        );
+        assertEq(quote.amountOut, (input.amountInMinusFee * token0.totalSupply()) / address(token0).balance);
 
         vm.prank(owner);
         stex.pause();
@@ -1469,17 +1109,11 @@ contract STEXAMMTest is Test {
         input.isZeroToOne = true;
         quote = stex.getLiquidityQuote(input, new bytes(0), new bytes(0));
         assertEq(quote.amountInFilled, input.amountInMinusFee);
-        assertEq(
-            quote.amountOut,
-            (input.amountInMinusFee * address(token0).balance) /
-                token0.totalSupply()
-        );
+        assertEq(quote.amountOut, (input.amountInMinusFee * address(token0).balance) / token0.totalSupply());
     }
 
     function testOnSwapCallback() public {
-        vm.expectRevert(
-            STEXAMM.STEXAMM__onSwapCallback_NotImplemented.selector
-        );
+        vm.expectRevert(STEXAMM.STEXAMM__onSwapCallback_NotImplemented.selector);
         stex.onSwapCallback(false, 0, 0);
     }
 

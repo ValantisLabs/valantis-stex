@@ -11,10 +11,7 @@ interface ISTEXAMM is ISovereignALM {
 
     event SwapFeeModuleSet(address swapFeeModule);
 
-    event WithdrawalModuleProposed(
-        address withdrawalModule,
-        uint256 startTimestamp
-    );
+    event WithdrawalModuleProposed(address withdrawalModule, uint256 startTimestamp);
 
     event WithdrawalModuleProposalCancelled();
 
@@ -26,19 +23,10 @@ interface ISTEXAMM is ISovereignALM {
 
     event Token0ReservesUnstaked(uint256 reserve0);
 
-    event Deposit(
-        address indexed sender,
-        address indexed recipient,
-        uint256 amountToken1,
-        uint256 shares
-    );
+    event Deposit(address indexed sender, address indexed recipient, uint256 amountToken1, uint256 shares);
 
     event Withdraw(
-        address indexed sender,
-        address indexed recipient,
-        uint256 amountToken0,
-        uint256 amountToken1,
-        uint256 shares
+        address indexed sender, address indexed recipient, uint256 amountToken0, uint256 amountToken1, uint256 shares
     );
 
     function pool() external view returns (address);
@@ -57,10 +45,7 @@ interface ISTEXAMM is ISovereignALM {
 
     function unpause() external;
 
-    function proposeSwapFeeModule(
-        address _swapFeeModule,
-        uint256 _timelockDelay
-    ) external;
+    function proposeSwapFeeModule(address _swapFeeModule, uint256 _timelockDelay) external;
 
     function cancelSwapFeeModuleProposal() external;
 
@@ -80,18 +65,14 @@ interface ISTEXAMM is ISovereignALM {
 
     function supplyToken1Reserves(uint256 _amount1) external;
 
-    function getAmountOut(
-        address _tokenIn,
-        uint256 _amountIn,
-        bool _isInstantWithdraw
-    ) external view returns (uint256 amountOut);
+    function getAmountOut(address _tokenIn, uint256 _amountIn, bool _isInstantWithdraw)
+        external
+        view
+        returns (uint256 amountOut);
 
-    function deposit(
-        uint256 _amount,
-        uint256 _minShares,
-        uint256 _deadline,
-        address _recipient
-    ) external returns (uint256 shares);
+    function deposit(uint256 _amount, uint256 _minShares, uint256 _deadline, address _recipient)
+        external
+        returns (uint256 shares);
 
     function withdraw(
         uint256 _shares,
