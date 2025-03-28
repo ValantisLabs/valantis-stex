@@ -602,6 +602,25 @@ contract STEXAMMTest is Test {
         assertEq(preReserve1 + amount, postReserve1);
     }
 
+    function testDeposit__WithUpdate() public {
+        address recipient = makeAddr("RECIPIENT");
+
+        // Mocks a completed unstake operation which needs to be sent back into pool through `update`
+        vm.deal(address(withdrawalModule), 0.123 ether);
+        assertEq(address(withdrawalModule).balance, 0.123 ether);
+
+        weth.approve(address(stex), type(uint256).max);
+
+        stex.deposit(10e18, 0, block.timestamp, recipient);
+
+        // `update` must have been called
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 0.123 ether);
+        assertEq(address(withdrawalModule).balance, 0);
+        assertEq(weth.balanceOf(address(withdrawalModule)), 0);
+    }
+
     function testOnDepositLiquidityCallback() public {
         vm.expectRevert(STEXAMM.STEXAMM__OnlyPool.selector);
         stex.onDepositLiquidityCallback(0, 0, new bytes(0));
@@ -815,6 +834,35 @@ contract STEXAMMTest is Test {
         assertEq(amount0, 0);
         assertGt(amount1, 0);
         assertEq(weth.balanceOf(recipient), amount1);
+
+        vm.stopPrank();
+    }
+
+    function testWithdraw__WithUpdate() public {
+        address recipient = makeAddr("MOCK_RECIPIENT");
+
+        _deposit(1e18, recipient);
+
+        uint256 shares = stex.balanceOf(recipient);
+        assertGt(shares, 0);
+
+        token0.mint{value: 1e18}(address(pool));
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertGt(reserve0, 0);
+        assertEq(reserve1, 1e18 + 1e3 + 1);
+
+        vm.startPrank(recipient);
+
+        // Mocks the processing of unstaking token0 by direct transfer of ETH
+        vm.deal(address(withdrawalModule), 0.123 ether);
+
+        stex.withdraw(shares / 2, 0, 0, block.timestamp, recipient, false, false);
+        // WETH was transferred to the pool and recipient
+        assertGt(weth.balanceOf(recipient), 0);
+        assertEq(token0.balanceOf(recipient), 0);
+        assertEq(weth.balanceOf(address(pool)), reserve1 + 0.123 ether - weth.balanceOf(recipient));
+        assertEq(address(withdrawalModule).balance, 0);
+        assertEq(weth.balanceOf(address(withdrawalModule)), 0);
 
         vm.stopPrank();
     }

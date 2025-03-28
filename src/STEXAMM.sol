@@ -477,6 +477,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
     {
         _checkDeadline(_deadline);
 
+        _withdrawalModule.update();
+
         uint256 totalSupplyCache = totalSupply();
         if (totalSupplyCache == 0) {
             _mint(address(1), MINIMUM_LIQUIDITY);
@@ -554,6 +556,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         if (_recipient == address(0)) {
             revert STEXAMM__ZeroAddress();
         }
+
+        _withdrawalModule.update();
 
         WithdrawCache memory cache;
 
