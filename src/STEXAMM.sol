@@ -634,13 +634,26 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         }
 
         if (amount1 + cache.instantWithdrawalFee1 > cache.amount1LendingPool) {
-            // Withdraw due token1 amount from pool into this module,
-            // witholding any due pool manager fees, and send remaining amount to recipient,
-            // also unwrapping into native token if necessary
+            // token1 amount left to withdraw
             cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1 - cache.amount1LendingPool;
 
-            ISovereignPool(pool).withdrawLiquidity(0, cache.amount1Remaining, msg.sender, address(this), new bytes(0));
+            (, uint256 reserve1) = ISovereignPool(pool).getReserves();
+            if (cache.amount1Remaining <= reserve1) {
+                // If pool has enough token1 liquidity
+                ISovereignPool(pool).withdrawLiquidity(
+                    0, cache.amount1Remaining, msg.sender, address(this), new bytes(0)
+                );
+            } else {
+                // If pool does not have enough token1 liquidity,
+                // we withdraw full reserves from pool,
+                // and attempt to withdraw remaining amount from lending pool
+                ISovereignPool(pool).withdrawLiquidity(0, reserve1, msg.sender, address(this), new bytes(0));
 
+                _withdrawalModule.withdrawToken1FromLendingPool(cache.amount1Remaining - reserve1, address(this));
+            }
+
+            // All token1 liquidity is sent to this contract beforehand,
+            // so that the instant wihtdrawal fee can be deducted
             if (cache.amount1Remaining > cache.instantWithdrawalFee1) {
                 if (_unwrapToNativeToken) {
                     IWETH9(token1).withdraw(cache.amount1Remaining - cache.instantWithdrawalFee1);
