@@ -872,9 +872,9 @@ contract STEXAMMTest is Test {
         _setSwapFeeParams(3000, 5000, 1, 30);
 
         {
-            uint256 amountOutSimulation = stex.getAmountOut(address(token0), 0);
+            uint256 amountOutSimulation = stex.getAmountOut(address(token0), 0, false);
             assertEq(amountOutSimulation, 0);
-            amountOutSimulation = stex.getAmountOut(recipient, 1 ether);
+            amountOutSimulation = stex.getAmountOut(recipient, 1 ether, false);
             assertEq(amountOutSimulation, 0);
         }
 
@@ -888,11 +888,11 @@ contract STEXAMMTest is Test {
 
         // zero token1 liquidity
         vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
-        stex.getAmountOut(address(token0), params.amountIn);
+        stex.getAmountOut(address(token0), params.amountIn, false);
 
         _addPoolReserves(0, 30 ether);
 
-        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
@@ -915,7 +915,7 @@ contract STEXAMMTest is Test {
 
         // Test token0 -> token1 swap (large price impact)
         params.amountIn = 10 ether;
-        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (amountInUsed, amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
@@ -966,7 +966,7 @@ contract STEXAMMTest is Test {
         params.swapTokenOut = address(weth);
         params.recipient = recipient;
 
-        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        uint256 amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (uint256 amountInUsed, uint256 amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
@@ -988,7 +988,7 @@ contract STEXAMMTest is Test {
 
         // Test token0 -> token1 swap with full amount
         params.amountIn = 10 ether;
-        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn);
+        amountOutEstimate = stex.getAmountOut(address(token0), params.amountIn, false);
         (amountInUsed, amountOut) = pool.swap(params);
         assertLt(amountOut, withdrawalModule.convertToToken1(amountInUsed));
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);

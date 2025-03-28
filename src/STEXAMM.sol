@@ -224,16 +224,23 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
      *      do not use for accurate simulation for `SovereignPool::swap`.
      * @param _tokenIn Address of input token to swap.
      * @param _amountIn Amount if `_tokenIn` to swap.
+     * @param _isInstantWithdraw Boolean to indicate if it should be called through `withdraw`
+     *         with `_isInstantWithdraw=true`.
+     *        WARNING: If `_isInstantWithdraw=true`, `_amountIn` should not be accounted for fee calculation.
      * @return amountOut Amount of output token received.
      */
-    function getAmountOut(address _tokenIn, uint256 _amountIn) public view returns (uint256 amountOut) {
+    function getAmountOut(address _tokenIn, uint256 _amountIn, bool _isInstantWithdraw)
+        public
+        view
+        returns (uint256 amountOut)
+    {
         if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) {
             return 0;
         }
 
         address swapFeeModule = ISovereignPool(pool).swapFeeModule();
         SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
-            _tokenIn, address(0), _amountIn, address(0), new bytes(0)
+            _tokenIn, address(0), _isInstantWithdraw ? 0 : _amountIn, address(0), new bytes(0)
         );
 
         uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
@@ -586,7 +593,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         // This is equivalent to an instant swap into token1 (with an extra fee in token1),
         // and withdraw the total amount in token1
         if (_isInstantWithdrawal) {
-            uint256 amount1SwapEquivalent = getAmountOut(token0, amount0);
+            uint256 amount1SwapEquivalent = getAmountOut(token0, amount0, true);
             uint256 amount1WithFee = _withdrawalModule.convertToToken1(amount0);
             // Apply manager fee on instant withdrawals in token1
             cache.instantWithdrawalFee1 =
