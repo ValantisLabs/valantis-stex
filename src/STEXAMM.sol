@@ -587,9 +587,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         // and withdraw the total amount in token1
         if (_isInstantWithdrawal) {
             uint256 amount1SwapEquivalent = getAmountOut(token0, amount0);
+            uint256 amount1WithFee = _withdrawalModule.convertToToken1(amount0);
             // Apply manager fee on instant withdrawals in token1
-            cache.instantWithdrawalFee1 = (amount1SwapEquivalent * ISovereignPool(pool).poolManagerFeeBips()) / BIPS;
-            amount1 += (amount1SwapEquivalent - cache.instantWithdrawalFee1);
+            cache.instantWithdrawalFee1 =
+                ((amount1WithFee - amount1SwapEquivalent) * ISovereignPool(pool).poolManagerFeeBips()) / BIPS;
+            amount1 += amount1SwapEquivalent;
 
             amount0 = 0;
         }
