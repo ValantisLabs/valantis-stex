@@ -838,6 +838,53 @@ contract STEXAMMTest is Test {
         vm.stopPrank();
     }
 
+    function testWithdraw__InstantWithdrawal__FromLendingPool() public {
+        address recipient = makeAddr("RECIPIENT");
+
+        _setSwapFeeParams(3000, 5000, 1, 30);
+
+        _deposit(10e18, recipient);
+
+        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
+        assertEq(reserve0, 0);
+        assertEq(reserve1, 10e18 + 1e3 + 1);
+
+        token0.mint{value: 10e18}(address(pool));
+
+        (reserve0, reserve1) = pool.getReserves();
+        assertEq(reserve1, 10e18 + 1e3 + 1);
+
+        uint256 shares = stex.balanceOf(recipient) / 2;
+        assertGt(shares, 0);
+
+        vm.startPrank(recipient);
+
+        // Instant withdrawals are entirely in token1, hence amount min of token0 must be 0
+        vm.expectRevert(STEXAMM.STEXAMM__withdraw_insufficientToken0Withdrawn.selector);
+        (uint256 amount0, uint256 amount1) = stex.withdraw(shares, 1, 0, block.timestamp, recipient, false, true);
+        vm.stopPrank();
+
+        // Supply a large fraction of token1 reserves into lending pool
+        withdrawalModule.supplyToken1ToLendingPool(9e18);
+        assertEq(lendingModule.assetBalance(), 9e18);
+
+        vm.startPrank(recipient);
+
+        (uint256 amount0Simulation, uint256 amount1Simulation) =
+            stexLens.getAmountsForWithdraw(address(stex), shares, true);
+        (amount0, amount1) = stex.withdraw(shares, 0, 0, block.timestamp, recipient, false, true);
+        assertEq(amount0Simulation, amount0);
+        assertEq(amount1Simulation, amount1);
+        assertEq(amount0, 0);
+        assertGt(amount1, 0);
+        assertEq(weth.balanceOf(recipient), amount1);
+        // All token1 reserves have been withdrawn from pool
+        assertEq(weth.balanceOf(address(pool)), 0);
+        assertLt(lendingModule.assetBalance(), 9e18);
+
+        vm.stopPrank();
+    }
+
     function testWithdraw__WithUpdate() public {
         address recipient = makeAddr("MOCK_RECIPIENT");
 
