@@ -29,6 +29,8 @@ interface ISTEXAMM is ISovereignALM {
         address indexed sender, address indexed recipient, uint256 amountToken0, uint256 amountToken1, uint256 shares
     );
 
+    function isLocked() external view returns (bool);
+
     function pool() external view returns (address);
 
     function token0() external view returns (address);

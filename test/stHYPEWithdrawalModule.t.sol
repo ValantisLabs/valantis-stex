@@ -145,6 +145,8 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testAmountToken1LendingPool() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         vm.startPrank(owner);
 
         uint256 balance = _withdrawalModule.amountToken1LendingPool();
@@ -188,6 +190,8 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testBurnToken0AfterWithdraw() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         uint256 amountToken0 = 1 ether;
         address recipient = makeAddr("MOCK_RECIPIENT");
 
@@ -195,10 +199,14 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testUnstakeToken0Reserves() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         _unstakeToken0Reserves(3 ether);
     }
 
     function testWithdrawToken1FromLendingPool() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         uint256 amountToken1 = 1 ether;
         address recipient = makeAddr("MOCK_RECIPIENT");
 
@@ -243,6 +251,8 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testUpdate() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         // No state updates have happened
         _withdrawalModule.update();
         assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0);
@@ -324,6 +334,8 @@ contract stHYPEWithdrawalModuleTest is Test {
     }
 
     function testClaimWithPriority() public {
+        assertFalse(_withdrawalModule.isLocked());
+
         uint256 amount1 = 1 ether;
         address recipient1 = makeAddr("MOCK_RECIPIENT_1");
         // User 1 requests withdrawal (before unstaking fulfillment)

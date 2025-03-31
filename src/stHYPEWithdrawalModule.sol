@@ -191,6 +191,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  VIEW FUNCTIONS
      *
      */
+
+    /**
+     * @notice Returns true if ReentrancyGuard lock is active, false otherwise.
+     */
+    function isLocked() external view override returns (bool) {
+        return _reentrancyGuardEntered();
+    }
+
     function convertToToken0(uint256 _amountToken1) public pure override returns (uint256) {
         // stHYPE is rebase
         return _amountToken1;
