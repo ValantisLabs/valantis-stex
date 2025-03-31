@@ -1,0 +1,49 @@
+{
+  "transactions": [
+    {
+      "hash": "0xe53e364c03b173048e0e1d94deade132fa2ad5f0937676a7c13646940751de9c",
+      "transactionType": "CALL",
+      "contractName": null,
+      "contractAddress": "0xd5a3000de5dbe273c141e31c58a4241d77623140",
+      "function": "setKeeper(address)",
+      "arguments": [
+        "0x6Fa0b094b71EF7fcA715177242682bdf1954e2e8"
+      ],
+      "transaction": {
+        "from": "0x388e360edaac94372df1a2663ffe52671bbd8b58",
+        "to": "0xd5a3000de5dbe273c141e31c58a4241d77623140",
+        "gas": "0x1077b",
+        "value": "0x0",
+        "input": "0x748747e60000000000000000000000006fa0b094b71ef7fca715177242682bdf1954e2e8",
+        "nonce": "0x82",
+        "chainId": "0x3e7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [
+    {
+      "status": "0x1",
+      "cumulativeGasUsed": "0xb429",
+      "logs": [],
+      "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "type": "0x2",
+      "transactionHash": "0xe53e364c03b173048e0e1d94deade132fa2ad5f0937676a7c13646940751de9c",
+      "transactionIndex": "0x0",
+      "blockHash": "0x5748ca0edb1057feeac4d0cd6c2a0e7657d4c67053640ec2e914ccb46b844d9e",
+      "blockNumber": "0x1c33d6",
+      "gasUsed": "0xb429",
+      "effectiveGasPrice": "0x5f5e101",
+      "from": "0x388e360edaac94372df1a2663ffe52671bbd8b58",
+      "to": "0xd5a3000de5dbe273c141e31c58a4241d77623140",
+      "contractAddress": null
+    }
+  ],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1743427861,
+  "chain": 999,
+  "commit": "ab206aa"
+}
