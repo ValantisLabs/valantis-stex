@@ -210,11 +210,14 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
      *  VIEW FUNCTIONS
      *
      */
+    function isLocked() external view returns (bool) {
+        return _reentrancyGuardEntered();
+    }
 
     /**
      * @notice Returns address of Withdrawal Module.
      */
-    function withdrawalModule() external view returns (address) {
+    function withdrawalModule() external view override returns (address) {
         return address(_withdrawalModule);
     }
 
@@ -232,6 +235,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
     function getAmountOut(address _tokenIn, uint256 _amountIn, bool _isInstantWithdraw)
         public
         view
+        override
         returns (uint256 amountOut)
     {
         if ((_tokenIn != token0 && _tokenIn != token1) || _amountIn == 0) {

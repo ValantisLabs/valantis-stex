@@ -522,6 +522,8 @@ contract STEXAMMTest is Test {
     }
 
     function _deposit(uint256 amount, address recipient) private {
+        assertFalse(stex.isLocked());
+
         vm.prank(owner);
         stex.pause();
 
@@ -603,6 +605,8 @@ contract STEXAMMTest is Test {
     }
 
     function testDeposit__WithUpdate() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
 
         // Mocks a completed unstake operation which needs to be sent back into pool through `update`
@@ -639,6 +643,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
         {
             (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(address(stex), 0, false);
@@ -694,6 +700,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw__WithdrawalModule() public {
+        assertFalse(stex.isLocked());
+
         // Tests withdrawal where token0 is sent to unstake via withdrawal module
         address recipient = makeAddr("RECIPIENT");
 
@@ -767,6 +775,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw__FromLendingPool() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
 
         _setSwapFeeParams(3000, 5000, 1, 30);
@@ -802,6 +812,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw__InstantWithdrawal() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
 
         _setSwapFeeParams(3000, 5000, 1, 30);
@@ -839,6 +851,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw__InstantWithdrawal__FromLendingPool() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
 
         _setSwapFeeParams(3000, 5000, 1, 30);
@@ -886,6 +900,8 @@ contract STEXAMMTest is Test {
     }
 
     function testWithdraw__WithUpdate() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("MOCK_RECIPIENT");
 
         _deposit(1e18, recipient);
@@ -915,6 +931,8 @@ contract STEXAMMTest is Test {
     }
 
     function testSwap() public {
+        assertFalse(stex.isLocked());
+
         address recipient = makeAddr("RECIPIENT");
         _setSwapFeeParams(3000, 5000, 1, 30);
 
