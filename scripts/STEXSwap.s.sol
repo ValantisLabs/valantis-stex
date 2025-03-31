@@ -25,16 +25,16 @@ contract STEXSwapScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         STEXAMM stex = STEXAMM(
-            payable(0x45f2b4A4cA043F44F468C126a03332D202626C7a)
+            payable(0xE20725BEa0aF2b125Fe21882385275cDbfA94298)
         );
 
         address token0 = stex.token0();
         address token1 = stex.token1();
 
         address tokenIn = token0;
-        uint256 amount = 0.1 ether;
+        uint256 amount = 0.2 ether;
 
-        uint256 amountOut = stex.getAmountOut(tokenIn, amount);
+        uint256 amountOut = stex.getAmountOut(tokenIn, amount, false);
 
         console.log("amountOut expected: ", amountOut);
 

@@ -1,1 +1,1 @@
-eval $(grep '^RPC_URL' .env) && forge script scripts/STEXSwap.s.sol:STEXSwapScript --rpc-url $RPC_URL --broadcast
+eval $(grep '^RPC_URL' .env) && forge script scripts/STEXSwap.s.sol:STEXSwapScript --rpc-url $RPC_URL
