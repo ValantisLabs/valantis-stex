@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {IOverseer} from "src/interfaces/IOverseer.sol";
 import {IWithdrawalModule} from "src/interfaces/IWithdrawalModule.sol";
+import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
 contract OverseerInteractionsScript is Script, Test {
     function run() external {
@@ -32,9 +33,13 @@ contract OverseerInteractionsScript is Script, Test {
         );
         for (uint256 i; i < burnIds.length; i++) {
             console.log("Pending burnId for withdrawalModule: ", burnIds[i]);
+            console.log("is redeemable : ", overseer.redeemable(burnIds[i]));
         }
 
+        // Unstake stHYPE from pool into overseer
         //withdrawalModule.unstakeToken0Reserves(1 ether);
+
+        // Update Withdrawal Module state after unstaking requests are completed
         //withdrawalModule.update();
 
         /*console.log(
@@ -46,6 +51,18 @@ contract OverseerInteractionsScript is Script, Test {
             withdrawalModule.amountToken1PendingLPWithdrawal()
         );
         console.log(address(withdrawalModule).balance);*/
+
+        // Query LP withdrawal request by id
+        /*int256 id = 14;
+
+        LPWithdrawalRequest memory request = withdrawalModule.getLPWithdrawals(
+            id
+        );
+        console.log("request amount: ", request.amountToken1);
+        console.log("request recipient: ", request.recipient);
+        console.log("recipient pre balance: ", request.recipient.balance);
+        withdrawalModule.claim(id);
+        console.log("recipient post balance: ", request.recipient.balance);*/
 
         vm.stopBroadcast();
     }

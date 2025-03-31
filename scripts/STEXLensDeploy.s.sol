@@ -15,9 +15,11 @@ contract STEXLensDeployScript is Script, Test {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address stexLens = address(new STEXLens());
-
-        console.log("Deployed STEX Lens: ", stexLens);
+        // Uncomment to deploy STEX Lens
+        //address stexLens = address(new STEXLens());
+        STEXLens stexLens = STEXLens(
+            0xC1C9430044861D6e34745345EFCA710B482daC19
+        );
 
         vm.stopBroadcast();
     }
