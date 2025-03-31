@@ -210,7 +210,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
      *  VIEW FUNCTIONS
      *
      */
-    function isLocked() external view returns (bool) {
+
+    /**
+     * @notice Returns true if ReentrancyGuard lock is active, false otherwise.
+     */
+    function isLocked() external view override returns (bool) {
         return _reentrancyGuardEntered();
     }
 
