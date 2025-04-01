@@ -94,10 +94,17 @@ contract STEXAMMTest is Test {
         vm.stopPrank();
 
         lendingModule = new AaveLendingModule(
-            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(withdrawalModule), 2
+            address(lendingPool),
+            lendingPool.lendingPoolYieldToken(),
+            address(weth),
+            address(withdrawalModule),
+            address(0x123),
+            2
         );
         assertEq(lendingModule.yieldToken(), lendingPool.lendingPoolYieldToken());
         assertEq(lendingModule.asset(), address(weth));
+        assertEq(lendingModule.tokenSweepManager(), address(0x123));
+        assertEq(lendingModule.owner(), address(withdrawalModule));
         assertEq(lendingModule.referralCode(), 2);
 
         withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);

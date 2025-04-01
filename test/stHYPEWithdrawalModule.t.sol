@@ -66,10 +66,17 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.stopPrank();
 
         lendingModule = new AaveLendingModule(
-            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(_withdrawalModule), 2
+            address(lendingPool),
+            lendingPool.lendingPoolYieldToken(),
+            address(weth),
+            address(_withdrawalModule),
+            address(0x123),
+            2
         );
         assertEq(lendingModule.yieldToken(), lendingPool.lendingPoolYieldToken());
         assertEq(lendingModule.asset(), address(weth));
+        assertEq(lendingModule.tokenSweepManager(), address(0x123));
+        assertEq(lendingModule.owner(), address(_withdrawalModule));
         assertEq(lendingModule.referralCode(), 2);
 
         vm.startPrank(owner);

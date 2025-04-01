@@ -16,28 +16,80 @@ contract AaveLendingModule is ILendingModule, Ownable {
 
     /**
      *
+     *  EVENTS
+     *
+     */
+    event TokenSweepManagerUpdated(address tokenSweepManager);
+    event Sweep(address indexed token, address indexed recipient, uint256 balance);
+
+    /**
+     *
+     *  CUSTOM ERRORS
+     *
+     */
+    error AaveLendingModule__OnlyTokenSweepManager();
+    error AaveLendingModule__ZeroAddress();
+    error AaveLendingModule__sweep_assetCannotBeSweeped();
+    error AaveLendingModule__sweep_yieldTokenCannotBeSweeped();
+
+    /**
+     *
      *  IMMUTABLES
      *
      */
+
+    /**
+     * @notice AAVE V3 Pool contract.
+     */
     IPool public immutable pool;
 
+    /**
+     * @notice aToken address corresponding to `asset`.
+     */
     address public immutable yieldToken;
 
+    /**
+     * @notice ERC-20 token to be supplied.
+     */
     address public immutable asset;
 
     uint16 public immutable referralCode;
+
+    /**
+     * @notice Role which is able to call `sweep`.
+     * @dev It can sweep any stuck token balances, except `yieldToken` and `asset`.
+     */
+    address public tokenSweepManager;
+
+    /**
+     *
+     *  MODIFIERS
+     *
+     */
+    modifier onlyTokenSweepManager() {
+        if (msg.sender != tokenSweepManager) {
+            revert AaveLendingModule__OnlyTokenSweepManager();
+        }
+        _;
+    }
 
     /**
      *
      *  CONSTRUCTOR
      *
      */
-    constructor(address _pool, address _yieldToken, address _asset, address _owner, uint16 _referralCode)
-        Ownable(_owner)
-    {
+    constructor(
+        address _pool,
+        address _yieldToken,
+        address _asset,
+        address _owner,
+        address _tokenSweepManager,
+        uint16 _referralCode
+    ) Ownable(_owner) {
         pool = IPool(_pool);
         yieldToken = _yieldToken;
         asset = _asset;
+        tokenSweepManager = _tokenSweepManager;
         referralCode = _referralCode;
     }
 
@@ -59,6 +111,15 @@ contract AaveLendingModule is ILendingModule, Ownable {
      *  EXTERNAL FUNCTIONS
      *
      */
+    function setTokenSweepManager(address _tokenSweepManager) external onlyTokenSweepManager {
+        if (_tokenSweepManager == address(0)) {
+            revert AaveLendingModule__ZeroAddress();
+        }
+
+        tokenSweepManager = _tokenSweepManager;
+
+        emit TokenSweepManagerUpdated(_tokenSweepManager);
+    }
 
     /**
      * @notice Deposits asset token into the lending pool.
@@ -79,5 +140,30 @@ contract AaveLendingModule is ILendingModule, Ownable {
      */
     function withdraw(uint256 _amount, address _recipient) external onlyOwner {
         pool.withdraw(asset, _amount, _recipient);
+    }
+
+    /**
+     * @notice Sweep token balances which have been locked into this contract.
+     * @dev Only callable by `tokenSweepManager`.
+     * @param _token Token address to claim balances for.
+     * @param _recipient Recipient of `_token` balance.
+     */
+    function sweep(address _token, address _recipient) external onlyTokenSweepManager {
+        if (_token == address(0)) revert AaveLendingModule__ZeroAddress();
+        if (_recipient == address(0)) revert AaveLendingModule__ZeroAddress();
+
+        if (_token == asset) {
+            revert AaveLendingModule__sweep_assetCannotBeSweeped();
+        }
+        if (_token == yieldToken) {
+            revert AaveLendingModule__sweep_yieldTokenCannotBeSweeped();
+        }
+
+        uint256 balance = IERC20(_token).balanceOf(address(this));
+        if (balance > 0) {
+            IERC20(_token).safeTransfer(_recipient, balance);
+
+            emit Sweep(_token, _recipient, balance);
+        }
     }
 }
