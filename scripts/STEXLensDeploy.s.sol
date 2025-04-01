@@ -5,6 +5,7 @@ import "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {STEXLens} from "src/STEXLens.sol";
+import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
 
 contract STEXLensDeployScript is Script, Test {
     function run() external {

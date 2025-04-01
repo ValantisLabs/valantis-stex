@@ -27,7 +27,7 @@ contract STEXLPScript is Script, Test {
         );
 
         // Uncomment for deposits
-        uint256 amount = 0.2 ether;
+        /*uint256 amount = 0.2 ether;
         uint256 shares = stexLens.getSharesForDeposit(address(stex), amount);
 
         DepositWrapper depositWrapper = DepositWrapper(
@@ -38,7 +38,7 @@ contract STEXLPScript is Script, Test {
         }((shares * 9999) / 10_000, block.timestamp + 120, deployerAddress);
 
         console.log("shares expected: ", shares);
-        console.log("shares deposited: ", sharesDeposited);
+        console.log("shares deposited: ", sharesDeposited);*/
 
         // Uncomment for withdrawals
         /*uint256 amount = 1e16;
