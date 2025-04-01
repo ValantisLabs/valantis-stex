@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 import "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 
+import {AaveLendingModule} from "src/AaveLendingModule.sol";
 import {STEXAMM} from "src/STEXAMM.sol";
 import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
 import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
@@ -182,6 +183,27 @@ contract STEXDeployScript is Script, Test {
         assertEq(manager.owner(), ownerMultisig);
         //withdrawalModule.transferOwnership(address(manager));
         assertEq(withdrawalModule.owner(), address(manager));
+
+        // Uncomment for deployment of Aave Lending Module
+        /*address WHYPE = stex.token1();
+        address aWHYPE = 0x7C97cd7B57b736c6AD74fAE97C0e21e856251dcf;
+        address aaveV3Pool = 0xceCcE0EB9DD2Ef7996e01e25DD70e461F918A14b;
+        address owner = address(withdrawalModule);
+        address tokenSweepManager = ownerMultisig;
+        uint16 referralCode = 2;
+        AaveLendingModule lendingModule = new AaveLendingModule(
+            aaveV3Pool,
+            aWHYPE,
+            WHYPE,
+            owner,
+            tokenSweepManager,
+            referralCode
+        );
+        assertEq(address(lendingModule.pool()), aaveV3Pool);
+        assertEq(lendingModule.yieldToken(), aWHYPE);
+        assertEq(lendingModule.owner(), address(withdrawalModule));
+        assertEq(lendingModule.tokenSweepManager(), ownerMultisig);
+        assertEq(lendingModule.referralCode(), 2);*/
 
         vm.stopBroadcast();
     }
