@@ -66,8 +66,11 @@ contract stHYPEWithdrawalModuleTest is Test {
         vm.stopPrank();
 
         lendingModule = new AaveLendingModule(
-            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(_withdrawalModule)
+            address(lendingPool), lendingPool.lendingPoolYieldToken(), address(weth), address(_withdrawalModule), 2
         );
+        assertEq(lendingModule.yieldToken(), lendingPool.lendingPoolYieldToken());
+        assertEq(lendingModule.asset(), address(weth));
+        assertEq(lendingModule.referralCode(), 2);
 
         vm.startPrank(owner);
         _withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);

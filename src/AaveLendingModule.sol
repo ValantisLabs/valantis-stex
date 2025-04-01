@@ -25,15 +25,20 @@ contract AaveLendingModule is ILendingModule, Ownable {
 
     address public immutable asset;
 
+    uint16 public immutable referralCode;
+
     /**
      *
      *  CONSTRUCTOR
      *
      */
-    constructor(address _pool, address _yieldToken, address _asset, address _owner) Ownable(_owner) {
+    constructor(address _pool, address _yieldToken, address _asset, address _owner, uint16 _referralCode)
+        Ownable(_owner)
+    {
         pool = IPool(_pool);
         yieldToken = _yieldToken;
         asset = _asset;
+        referralCode = _referralCode;
     }
 
     /**
@@ -63,7 +68,7 @@ contract AaveLendingModule is ILendingModule, Ownable {
     function deposit(uint256 _amount) external onlyOwner {
         IERC20(asset).safeTransferFrom(msg.sender, address(this), _amount);
         IERC20(asset).forceApprove(address(pool), _amount);
-        IPool(pool).supply(asset, _amount, address(this), 0);
+        IPool(pool).supply(asset, _amount, address(this), referralCode);
     }
 
     /**
