@@ -205,6 +205,9 @@ contract STEXDeployScript is Script, Test {
         assertEq(lendingModule.tokenSweepManager(), ownerMultisig);
         assertEq(lendingModule.referralCode(), 2);*/
 
+        console.log("stex pause: ");
+        console.logBytes(abi.encodeWithSelector(STEXAMM.pause.selector));
+
         vm.stopBroadcast();
     }
 }
