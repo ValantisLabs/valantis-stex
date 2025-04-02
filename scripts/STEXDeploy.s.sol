@@ -73,7 +73,7 @@ contract STEXDeployScript is Script, Test {
             //    feeMaxBips
             // );
         }*/
-        {
+        /*{
             (
                 uint32 minThresholdRatioBips,
                 uint32 maxThresholdRatioBips,
@@ -84,7 +84,7 @@ contract STEXDeployScript is Script, Test {
             assertEq(maxThresholdRatioBips, 7_000);
             assertEq(feeMinBips, 5);
             assertEq(feeMaxBips, 40);
-        }
+        }*/
 
         // Uncomment for deployment of Withdrawal Module
         /*stHYPEWithdrawalModule withdrawalModule = new stHYPEWithdrawalModule(
@@ -115,20 +115,20 @@ contract STEXDeployScript is Script, Test {
         STEXAMM stex = STEXAMM(
             payable(0x39694eFF3b02248929120c73F90347013Aec834d)
         );
-        stex.transferOwnership(ownerMultisig);
+        //stex.transferOwnership(ownerMultisig);
         assertEq(stex.owner(), ownerMultisig);
 
-        address pool = stex.pool();
-        console.log("STEX sovereign pool: ", pool);
+        //address pool = stex.pool();
+        //console.log("STEX sovereign pool: ", pool);
 
         // Uncomment to set STEX's pool manager fees in bips
         // 20%
-        uint256 managerFeeBips = 2_000;
+        //uint256 managerFeeBips = 2_000;
 
-        bytes memory data = abi.encodeWithSelector(
+        /*bytes memory data = abi.encodeWithSelector(
             STEXAMM.setPoolManagerFeeBips.selector,
             managerFeeBips
-        );
+        );*/
         //console.log("payload for stex.setPoolManagerFeeBips: ");
         //console.logBytes(data);
 
@@ -181,29 +181,32 @@ contract STEXDeployScript is Script, Test {
         );
         //manager.transferOwnership(ownerMultisig);
         assertEq(manager.owner(), ownerMultisig);
+        assertEq(manager.keeper(), address(keeper));
         //withdrawalModule.transferOwnership(address(manager));
         assertEq(withdrawalModule.owner(), address(manager));
 
         // Uncomment for deployment of Aave Lending Module
-        /*address WHYPE = stex.token1();
-        address aWHYPE = 0x7C97cd7B57b736c6AD74fAE97C0e21e856251dcf;
-        address aaveV3Pool = 0xceCcE0EB9DD2Ef7996e01e25DD70e461F918A14b;
-        address owner = address(withdrawalModule);
-        address tokenSweepManager = ownerMultisig;
-        uint16 referralCode = 2;
-        AaveLendingModule lendingModule = new AaveLendingModule(
-            aaveV3Pool,
-            aWHYPE,
-            WHYPE,
-            owner,
-            tokenSweepManager,
-            referralCode
-        );
-        assertEq(address(lendingModule.pool()), aaveV3Pool);
-        assertEq(lendingModule.yieldToken(), aWHYPE);
-        assertEq(lendingModule.owner(), address(withdrawalModule));
-        assertEq(lendingModule.tokenSweepManager(), ownerMultisig);
-        assertEq(lendingModule.referralCode(), 2);*/
+        /*{
+            AaveLendingModule lendingModule = new AaveLendingModule(
+                0xceCcE0EB9DD2Ef7996e01e25DD70e461F918A14b, // AAVE V3 pool
+                0x7C97cd7B57b736c6AD74fAE97C0e21e856251dcf, // aWHYPE
+                stex.token1(), // WHYPE
+                address(withdrawalModule), // owner
+                ownerMultisig, // tokenSweepManager
+                2
+            );
+            assertEq(
+                address(lendingModule.pool()),
+                0xceCcE0EB9DD2Ef7996e01e25DD70e461F918A14b
+            );
+            assertEq(
+                lendingModule.yieldToken(),
+                0x7C97cd7B57b736c6AD74fAE97C0e21e856251dcf
+            );
+            assertEq(lendingModule.owner(), address(withdrawalModule));
+            assertEq(lendingModule.tokenSweepManager(), ownerMultisig);
+            assertEq(lendingModule.referralCode(), 2);
+        }*/
 
         vm.stopBroadcast();
     }
