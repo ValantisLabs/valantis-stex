@@ -596,9 +596,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
                 );
             } else {
                 // In this case there is more token0 owed to pending LP withdrawals,
-                // but not enough token0 in pool reserves not pending unstaking.
-                // Hence to ensure solvency of pending LP withdrawals,
-                // this amount will be deduced from the user's token1 total amount
+                // but not enough token0 in pool reserves nor pending unstaking.
+                // To ensure solvency of pending LP withdrawals,
+                // this amount will be deducted from the user's token1 total amount (`amount1`)
                 amount0Deduction = Math.mulDiv(
                     reserve0PendingWithdrawal - cache.reserve0Pool - amountToken0PendingUnstaking,
                     _shares,
