@@ -669,7 +669,7 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
             }
 
             // All token1 liquidity is sent to this contract beforehand,
-            // so that the instant wihtdrawal fee can be deducted
+            // so that the instant withdrawal fee can be deducted
             if (cache.amount1Remaining > cache.instantWithdrawalFee1) {
                 if (_unwrapToNativeToken) {
                     IWETH9(token1).withdraw(cache.amount1Remaining - cache.instantWithdrawalFee1);

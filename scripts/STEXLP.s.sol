@@ -20,28 +20,32 @@ contract STEXLPScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         STEXLens stexLens = STEXLens(
-            0x40FeebdE4e98BbD31c07698A89d545482ff29E82
+            0x68675DC8406252b6950128f6504A5E287Ef24ED0
         );
         STEXAMM stex = STEXAMM(
-            payable(0xE20725BEa0aF2b125Fe21882385275cDbfA94298)
+            payable(0x39694eFF3b02248929120c73F90347013Aec834d)
         );
 
         // Uncomment for deposits
-        /*uint256 amount = 0.2 ether;
+        /*uint256 amount = 1 ether;
         uint256 shares = stexLens.getSharesForDeposit(address(stex), amount);
 
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0xa731B781228553be3166cE4C7A63B2f40b1dF956)
+            payable(0x644195021278674bd8F7574e17018d32d8E75A98)
         );
         uint256 sharesDeposited = depositWrapper.depositFromNative{
             value: amount
         }((shares * 9999) / 10_000, block.timestamp + 120, deployerAddress);
 
         console.log("shares expected: ", shares);
-        console.log("shares deposited: ", sharesDeposited);*/
+        console.log("shares deposited: ", sharesDeposited);
+        console.log(
+            "native token balance after deposit: ",
+            deployerAddress.balance
+        );*/
 
         // Uncomment for withdrawals
-        /*uint256 amount = 1e16;
+        /*uint256 amount = stex.balanceOf(deployerAddress);
         bool isInstantWithdrawal = true;
 
         (uint256 amount0, uint256 amount1) = stexLens.getAmountsForWithdraw(
