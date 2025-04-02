@@ -649,22 +649,9 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
             _withdrawalModule.burnToken0AfterWithdraw(amount0, _recipient);
         }
 
-        // Transfer token1 amount due from lending pool to recipient (including any earned yield),
-        // also unwrapping into native token if necessary
-        if (cache.amount1LendingPool > 0) {
-            _withdrawalModule.withdrawToken1FromLendingPool(
-                cache.amount1LendingPool, _unwrapToNativeToken ? address(this) : _recipient
-            );
-
-            if (_unwrapToNativeToken) {
-                IWETH9(token1).withdraw(cache.amount1LendingPool);
-                Address.sendValue(payable(_recipient), cache.amount1LendingPool);
-            }
-        }
-
-        if (amount1 + cache.instantWithdrawalFee1 > cache.amount1LendingPool) {
+        if (amount1 + cache.instantWithdrawalFee1 > 0) {
             // token1 amount left to withdraw
-            cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1 - cache.amount1LendingPool;
+            cache.amount1Remaining = amount1 + cache.instantWithdrawalFee1;
 
             (, uint256 reserve1) = ISovereignPool(pool).getReserves();
             if (cache.amount1Remaining <= reserve1) {
