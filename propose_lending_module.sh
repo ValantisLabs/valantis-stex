@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/LendingModuleProposal.s.sol:LendingModuleProposalScript --rpc-url $RPC_URL
