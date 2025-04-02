@@ -956,18 +956,16 @@ contract STEXAMMTest is Test {
         uint256 shares2 = stex.balanceOf(recipient2);
         assertGt(shares2, 0);
 
-        // Replace 5e18 WETH with 5e18 LST
+        // Replace 5e18 WETH with 5e18 LST (same effect as swaps with 0 fee)
         token0.mint{value: 5 ether}(address(pool));
 
         vm.prank(address(stex));
         pool.withdrawLiquidity(0, 5 ether, address(this), address(1), new bytes(0));
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
-        console.log("reserve0: ", reserve0);
-        console.log("reserve1: ", reserve1);
         assertEq(reserve0, 5 ether);
         assertEq(reserve1, 5 ether + 1 ether + 1e3 + 1);
 
-        // user 1 withdraws
+        // user 1 withdraws (delayed withdraw)
         {
             vm.startPrank(recipient1);
             (uint256 amount0Simulation, uint256 amount1Simulation) =
@@ -986,24 +984,24 @@ contract STEXAMMTest is Test {
         (reserve0, reserve1) = pool.getReserves();
         assertEq(reserve0, 5 ether);
         assertEq(reserve1, 5 ether + 1 ether + 1e3 + 1 - weth.balanceOf(recipient1));
-        console.log("reserve0: ", reserve0);
-        console.log("reserve1: ", reserve1);
 
-        // Replace 1e18 LST with 1e18 WETH
-        uint256 preBalance = address(token0).balance;
-        token0.burn(address(pool), token0.balanceToShares(1e18));
-        // corrects token0.burn by lowering ETH balance accordingly
-        vm.deal(address(token0), preBalance - 1e18);
+        // Replace 1e18 LST with 1e18 WETH (same effect as swaps with 0 fee)
+        {
+            uint256 preBalance = address(token0).balance;
+            token0.burn(address(pool), token0.balanceToShares(1e18));
+            // corrects token0.burn by lowering ETH balance accordingly
+            vm.deal(address(token0), preBalance - 1e18);
+        }
 
         weth.transfer(address(pool), 1e18);
 
         (reserve0, reserve1) = pool.getReserves();
-        console.log("reserve0: ", reserve0);
-        console.log("reserve1: ", reserve1);
-        console.log("amountToken1PendingLPWithdraw: ", withdrawalModule.amountToken1PendingLPWithdrawal());
         // There is a higher amount of token1 owed to recipient1 than pool's token0 reserves
         assertGt(withdrawalModule.amountToken1PendingLPWithdrawal(), reserve0);
 
+        uint256 snapshot = vm.snapshotState();
+
+        // user 2 withdraws (delayed withdraw)
         {
             vm.startPrank(recipient2);
             (uint256 amount0Simulation, uint256 amount1Simulation) =
@@ -1013,9 +1011,26 @@ contract STEXAMMTest is Test {
             assertEq(amount0Simulation, amount0Withdraw);
             assertEq(amount1Simulation, amount1Withdraw);
             (reserve0, reserve1) = pool.getReserves();
-            console.log("reserve0: ", reserve0);
-            console.log("reserve1: ", reserve1);
-            console.log("amountToken1PendingLPWithdraw: ", withdrawalModule.amountToken1PendingLPWithdrawal());
+
+            // user 2 has no claim on token0 reserves,
+            // but can still withdraw its due token1 portion
+            assertEq(amount0Withdraw, 0);
+            assertEq(amount1Withdraw, 1e18);
+            assertEq(weth.balanceOf(recipient2), 1e18);
+        }
+
+        vm.revertToState(snapshot);
+
+        // user 2 withdraws (instant withdraw)
+        {
+            vm.startPrank(recipient2);
+            (uint256 amount0Simulation, uint256 amount1Simulation) =
+                stexLens.getAmountsForWithdraw(address(stex), shares2, true);
+            (uint256 amount0Withdraw, uint256 amount1Withdraw) =
+                stex.withdraw(shares2, 0, 0, block.timestamp, recipient2, false, true);
+            assertEq(amount0Simulation, amount0Withdraw);
+            assertEq(amount1Simulation, amount1Withdraw);
+            (reserve0, reserve1) = pool.getReserves();
 
             // user 2 has no claim on token0 reserves,
             // but can still withdraw its due token1 portion
