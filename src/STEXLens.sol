@@ -19,6 +19,7 @@ contract STEXLens {
      *
      */
     struct WithdrawCache {
+        uint256 totalSupply;
         uint256 reserve0Pool;
         uint256 reserve1Pool;
         uint256 amount1LendingPool;
@@ -102,22 +103,46 @@ contract STEXLens {
         WithdrawCache memory cache;
 
         (cache.reserve0Pool, cache.reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
+        cache.totalSupply = totalSupplyCache;
 
-        // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
-        // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
-        // minus LP amount already pending withdrawal
-        amount0 = Math.mulDiv(
-            cache.reserve0Pool + withdrawalModule.amountToken0PendingUnstaking()
-                - withdrawalModule.convertToToken0(reserve1PendingWithdrawal),
-            shares,
-            totalSupplyCache
-        );
+        {
+            uint256 amountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
+            uint256 reserve0PendingWithdrawal =
+                withdrawalModule.convertToToken0(withdrawalModule.amountToken1PendingLPWithdrawal());
 
-        cache.amount1LendingPool = Math.mulDiv(withdrawalModule.amountToken1LendingPool(), shares, totalSupplyCache);
-        // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
-        // plus pro-rata share of token1 reserves earning yield in lending pool (liquid, assuming lending pool is working correctly)
-        amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, shares, totalSupplyCache);
+            uint256 amount0Deduction;
+            if (cache.reserve0Pool + amountToken0PendingUnstaking > reserve0PendingWithdrawal) {
+                // pro-rata share of token0 reserves in pool (liquid), token0 reserves pending in withdrawal queue (locked)
+                // minus token0 amount already owed to pending LP withdrawals.
+                amount0 = Math.mulDiv(
+                    cache.reserve0Pool + amountToken0PendingUnstaking - reserve0PendingWithdrawal,
+                    shares,
+                    cache.totalSupply
+                );
+            } else {
+                // In this case there is more token0 owed to pending LP withdrawals,
+                // but not enough token0 in pool reserves nor pending unstaking.
+                // To ensure solvency of pending LP withdrawals,
+                // this amount will be deducted from the user's token1 total amount (`amount1`)
+                amount0Deduction = Math.mulDiv(
+                    reserve0PendingWithdrawal - cache.reserve0Pool - amountToken0PendingUnstaking,
+                    shares,
+                    cache.totalSupply,
+                    Math.Rounding.Ceil
+                );
+            }
+
+            cache.amount1LendingPool =
+                Math.mulDiv(withdrawalModule.amountToken1LendingPool(), shares, cache.totalSupply);
+            // token1 amount calculated as pro-rata share of token1 reserves in the pool (liquid)
+            // plus pro-rata share of token1 reserves earning yield in lending pool (liquid, assuming lending pool allows for instant withdrawals)
+            amount1 = cache.amount1LendingPool + Math.mulDiv(cache.reserve1Pool, shares, cache.totalSupply);
+            if (amount0Deduction > 0) {
+                // Deduct this amount from token1, as it needs to be held to honor pending LP withdrawals
+                uint256 amount1Deduction = withdrawalModule.convertToToken1(amount0Deduction);
+                amount1 = amount1 > amount1Deduction ? amount1 - amount1Deduction : 0;
+            }
+        }
 
         if (isInstantWithdrawal) {
             uint256 amount1SwapEquivalent = stexInterface.getAmountOut(stexInterface.token0(), amount0, true);

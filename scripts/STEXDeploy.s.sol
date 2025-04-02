@@ -43,7 +43,7 @@ contract STEXDeployScript is Script, Test {
         );
         assertEq(swapFeeModule.owner(), deployerAddress);*/
         STEXRatioSwapFeeModule swapFeeModule = STEXRatioSwapFeeModule(
-            0x72cB15FbCc74ca3Ef4E0AAd43fC77aCD82D182f4
+            0x69317CEcf77Fb5dc68aBE5C7aAfB283De46956d9
         );
         //swapFeeModule.transferOwnership(ownerMultisig);
         assertEq(swapFeeModule.owner(), ownerMultisig);
@@ -94,7 +94,7 @@ contract STEXDeployScript is Script, Test {
         assertEq(withdrawalModule.owner(), deployerAddress);
         assertEq(withdrawalModule.overseer(), overseer);*/
         stHYPEWithdrawalModule withdrawalModule = stHYPEWithdrawalModule(
-            payable(0x1da0eA7f6464D715b0DA6922Aeb45c382Cc8Ab15)
+            payable(0x40Ba056B004Edd0b572509A1276Fd8530cf2bb7f)
         );
 
         // Uncomment for deployment of STEX AMM
@@ -113,9 +113,9 @@ contract STEXDeployScript is Script, Test {
         );
         assertEq(stex.owner(), deployerAddress);*/
         STEXAMM stex = STEXAMM(
-            payable(0xE20725BEa0aF2b125Fe21882385275cDbfA94298)
+            payable(0x39694eFF3b02248929120c73F90347013Aec834d)
         );
-        //stex.transferOwnership(ownerMultisig);
+        stex.transferOwnership(ownerMultisig);
         assertEq(stex.owner(), ownerMultisig);
 
         address pool = stex.pool();
@@ -136,12 +136,12 @@ contract STEXDeployScript is Script, Test {
 
         // Uncomment to set STEX AMM's pool in Swap Fee Module
         //swapFeeModule.setPool(pool);
-        assertEq(swapFeeModule.pool(), pool);
+        //assertEq(swapFeeModule.pool(), pool);
 
         // Uncomment to set STEX AMM in withdrawal module
         //withdrawalModule.setSTEX(address(stex));
-        assertEq(withdrawalModule.stex(), address(stex));
-        assertEq(withdrawalModule.pool(), pool);
+        //assertEq(withdrawalModule.stex(), address(stex));
+        //assertEq(withdrawalModule.pool(), pool);
 
         console.log("STEX AMM: ", address(stex));
 
@@ -151,7 +151,7 @@ contract STEXDeployScript is Script, Test {
             address(stex)
         );*/
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0xa731B781228553be3166cE4C7A63B2f40b1dF956)
+            payable(0x644195021278674bd8F7574e17018d32d8E75A98)
         );
 
         // Uncomment for deployment of withdrawal module's keeper

@@ -17,10 +17,10 @@ contract STEXLensDeployScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         // Uncomment to deploy STEX Lens
-        //address stexLens = address(new STEXLens());
-        STEXLens stexLens = STEXLens(
+        address stexLens = address(new STEXLens());
+        /*STEXLens stexLens = STEXLens(
             0x40FeebdE4e98BbD31c07698A89d545482ff29E82
-        );
+        );*/
 
         vm.stopBroadcast();
     }
