@@ -14,8 +14,6 @@ contract LendingModuleProposalScript is Script, Test {
     function run() external {
         if (block.chainid != 999) revert("Chain ID not Hyper EVM mainnet");
 
-        console.log("Deployer address: ", deployerAddress);
-
         // Address of owner multi-sig wallet
         address ownerMultisig = 0xe26dA5cBf101bDA4028E2B3208c32424f5D09421;
 
@@ -59,8 +57,8 @@ contract LendingModuleProposalScript is Script, Test {
         // Simulate proposal
         assertEq(lendingModule.assetBalance(), 0);
 
-        /*vm.startPrank(address(manager));
-        withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
+        //vm.startPrank(address(manager));
+        /*withdrawalModule.proposeLendingModule(address(lendingModule), 3 days);
         (
             address lendingModuleProposed,
             uint256 startTimestamp
@@ -68,19 +66,19 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(lendingModuleProposed, address(lendingModule));
         assertEq(startTimestamp, block.timestamp + 3 days);
 
-        vm.warp(block.timestamp + 3 days);
+        vm.warp(block.timestamp + 3 days);*/
 
-        withdrawalModule.setProposedLendingModule();
+        /*withdrawalModule.setProposedLendingModule();
         assertEq(
             address(withdrawalModule.lendingModule()),
             address(lendingModule)
         );
 
         withdrawalModule.supplyToken1ToLendingPool(10 ether);
-        assertEq(lendingModule.assetBalance(), 10 ether);
-        vm.stopPrank();*/
+        assertEq(lendingModule.assetBalance(), 10 ether);*/
+        //vm.stopPrank();
 
-        // Generate payload for proposal
+        // Generate payload for `proposeLendingModule`
         /*vm.startPrank(ownerMultisig);
 
         bytes memory payload = abi.encodeWithSelector(
@@ -106,5 +104,32 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(startTimestamp, block.timestamp + 3 days);
 
         vm.stopPrank();*/
+
+        // Generate payload for `setProposedLendingModule`
+        vm.startPrank(ownerMultisig);
+
+        bytes memory payload = abi.encodeWithSelector(
+            stHYPEWithdrawalModule.setProposedLendingModule.selector
+        );
+        bytes memory managerPayload = abi.encodeWithSelector(
+            WithdrawalModuleManager.call.selector,
+            address(withdrawalModule),
+            payload
+        );
+        console.log("payload to withdrawalModule manager: ");
+        console.logBytes(managerPayload);
+
+        (bool success, ) = address(manager).call(managerPayload);
+        assertTrue(success);
+
+        assertEq(
+            address(withdrawalModule.lendingModule()),
+            address(lendingModule)
+        );
+
+        vm.stopPrank();
+
+        //withdrawalModule.supplyToken1ToLendingPool(10 ether);
+        //assertEq(lendingModule.assetBalance(), 10 ether);
     }
 }
