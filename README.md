@@ -2,14 +2,14 @@
 
 ## Valantis Stake Exchange AMM (STEX AMM)
 
-STEX AMM is a novel AMM uniquely designed for redeemable assets such as Liquid Staking Tokens (LSTs).
+STEX AMM is a novel AMM uniquely designed for redeemable assets such as Liquid Staking Tokens (LSTs), designed in collaboration with [Thunderhead](https://thunderhead.xyz/).
 
 LSTs are backed 1:1 by an equivalent amount of native asset (in the absence of slashing). However, generic AMMs fail to account for this simple fact, forcing LPs to sell the LST for less than fair value, resulting in significant cumulative losses to arbitrageurs. Moreover, there are times where excess liquidity can be put to earn extra yield on external protocols (e.g. lending markets like AAVE and Euler) and only be brought back into the AMM if needed to absorb incoming swap volume.
 
 STEX AMM solves these two structural inefficiencies by integrating with the LST's protocol native withdrawal queue, hence converting any desired about of LST back into native token at 1:1 rate after a waiting period (e.g. 1-7 days on HyperEVM). Moreover, a portion of native token's unused reserves can be put to earn yield on a lending market. Swap fees are dynamic, going as low as 1 basis-point, and growing higher depending on how congested the LST protocol's withdrawal queue is, providing attractive exchange rates for swaps with clearly defined pricing bounds.
 
-[Docs](https://docs.valantis.xyz/staked-amm)
-[Whitepaper](https://github.com/ValantisLabs/stex-amm-whitepaper/blob/main/STEX_AMM_WHITEPAPER.pdf)
+- [Docs](https://docs.valantis.xyz/staked-amm)
+- [Whitepaper](https://github.com/ValantisLabs/stex-amm-whitepaper/blob/main/STEX_AMM_WHITEPAPER.pdf)
 
 ## Folder structure description
 
