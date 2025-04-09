@@ -15,9 +15,13 @@ interface IWithdrawalModule {
 
     function amountToken0PendingUnstaking() external view returns (uint256);
 
+    function amountToken0PendingUnstakingBeforeUpdate() external view returns (uint256);
+
     function amountToken1LendingPool() external view returns (uint256);
 
     function amountToken1PendingLPWithdrawal() external view returns (uint256);
+
+    function amountToken1PendingLPWithdrawalBeforeUpdate() external view returns (uint256);
 
     function amountToken1ClaimableLPWithdrawal() external view returns (uint256);
 
