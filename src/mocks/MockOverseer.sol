@@ -3,6 +3,8 @@ pragma solidity ^0.8.25;
 
 import {IOverseer} from "../interfaces/IOverseer.sol";
 
+import {MockStHype} from "./MockStHype.sol";
+
 contract MockOverseer is IOverseer {
     struct Burn {
         address to;
@@ -12,6 +14,12 @@ contract MockOverseer is IOverseer {
     uint256 public burnId;
 
     mapping(uint256 => Burn) public burnsById;
+
+    MockStHype public mockStHype;
+
+    constructor(address _mockStHype) {
+        mockStHype = MockStHype(payable(_mockStHype));
+    }
 
     receive() external payable {}
 
@@ -23,6 +31,11 @@ contract MockOverseer is IOverseer {
     function redeemable(uint256 /*_burnId*/ ) external pure override returns (bool) {
         // not implemented
         return false;
+    }
+
+    function mint(address to, string memory /*communityCode*/ ) external payable override returns (uint256) {
+        mockStHype.mint{value: msg.value}(to);
+        return msg.value;
     }
 
     function burnAndRedeemIfPossible(address to, uint256 amount, string memory /*_communityCode*/ )

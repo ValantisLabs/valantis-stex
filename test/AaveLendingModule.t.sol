@@ -49,6 +49,9 @@ contract AaveLendingModuleTest is Test {
 
         vm.startPrank(tokenSweepManager);
 
+        vm.expectRevert(AaveLendingModule.AaveLendingModule__ZeroAddress.selector);
+        lendingModule.setTokenSweepManager(address(0));
+
         lendingModule.setTokenSweepManager(newTokenSweepManager);
         assertEq(lendingModule.tokenSweepManager(), newTokenSweepManager);
 

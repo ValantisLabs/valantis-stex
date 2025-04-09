@@ -38,8 +38,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
     event LendingModuleProposalCancelled();
     event LendingModuleSet(address lendingModule);
+    event AmountToken1Staked(uint256 amount);
+    event AmountToken0Unstaked(uint256 amount);
     event AmountSuppliedToLendingModule(uint256 amount);
     event AmountWithdrawnFromLendingModule(uint256 amount);
+    event Update();
 
     /**
      *
@@ -136,15 +139,15 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     /**
      * @notice Amount of `token0` pending unstaking in the `overseer` withdrawal queue.
-     * @dev This will change as excess native token balance gets added to this contract.
+     * @dev This might get updated after calling to `update`.
      */
     uint256 private _amountToken0PendingUnstaking;
 
     /**
      * @notice Amount of native `token1` which is owed to STEX AMM LPs who have burnt their LP tokens.
-     * @dev This will change as excess native token balance gets added to this contract.
+     * @dev This might get updated after calling to `update`.
      */
-    uint256 public _amountToken1PendingLPWithdrawal;
+    uint256 private _amountToken1PendingLPWithdrawal;
 
     /**
      *
@@ -259,6 +262,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     }
 
     /**
+     * @notice Similar to `amountToken0PendingUnstaking()`,
+     *         but returns the value in storage prior to calling `update`.
+     */
+    function amountToken0PendingUnstakingBeforeUpdate() external view override returns (uint256) {
+        return _amountToken0PendingUnstaking;
+    }
+
+    /**
      * @notice Tracks amount of token1 which is owed to LP withdrawal requests.
      * @dev This needs to be tracked as a function of surplus native token balance in this contract,
      *      in order to maintain consistent accounting before `update` gets called.
@@ -272,6 +283,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         } else {
             return 0;
         }
+    }
+
+    /**
+     * @notice Similar to `amountToken1PendingLPWithdrawal()`,
+     *         but returns the value in storage prior to calling `update`.
+     */
+    function amountToken1PendingLPWithdrawalBeforeUpdate() external view override returns (uint256) {
+        return _amountToken1PendingLPWithdrawal;
     }
 
     /**
@@ -327,6 +346,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         lendingModuleProposal =
             LendingModuleProposal({lendingModule: _lendingModule, startTimestamp: block.timestamp + _timelockDelay});
+
         emit LendingModuleProposed(_lendingModule, block.timestamp + _timelockDelay);
     }
 
@@ -336,6 +356,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      */
     function cancelLendingModuleProposal() external onlyOwner {
         emit LendingModuleProposalCancelled();
+
         delete lendingModuleProposal;
     }
 
@@ -435,14 +456,42 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         if (postBalance - preBalance < _amountToken1) {
             revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
         }
+
         emit AmountWithdrawnFromLendingModule(_amountToken1);
+    }
+
+    /**
+     * @notice Withdraws a portion of pool's token1 reserves and stakes into `overseer` for an equivalent amount of `token0`.
+     * @dev Only callable by `owner`.
+     * @param _amountToken1 Amount of pool's token1 reserves to stake into token0.
+     * @param _communityCode Community code for `overseer` mint function.
+     */
+    function stakeToken1(uint256 _amountToken1, string memory _communityCode)
+        external
+        onlyOwner
+        whenPoolNotLocked
+        nonReentrant
+    {
+        if (_amountToken1 == 0) return;
+
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        stexInterface.supplyToken1Reserves(_amountToken1);
+
+        // Unwrap into native token
+        address token1Address = stexInterface.token1();
+        IWETH9(token1Address).withdraw(_amountToken1);
+
+        IOverseer(overseer).mint{value: _amountToken1}(pool, _communityCode);
+
+        emit AmountToken1Staked(_amountToken1);
     }
 
     /**
      * @notice Withdraws a portion of pool's token1 reserves and supplies to `lendingPool` to earn extra yield.
      * @dev Only callable by `owner`.
+     * @param _amountToken1 Amount of token1 reserves to supply.
      */
-    function supplyToken1ToLendingPool(uint256 _amountToken1) external onlyOwner nonReentrant {
+    function supplyToken1ToLendingPool(uint256 _amountToken1) external override onlyOwner nonReentrant {
         if (address(lendingModule) == address(0)) return;
         if (_amountToken1 == 0) return;
 
@@ -454,6 +503,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         IWETH9(token1).forceApprove(address(lendingModule), _amountToken1);
         // WARNING: Assumes that lending module deposits the total `_amountToken1` (no partial deposits)
         lendingModule.deposit(_amountToken1);
+
         emit AmountSuppliedToLendingModule(_amountToken1);
     }
 
@@ -475,6 +525,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         ERC20(token0).forceApprove(overseer, amountToken0);
         IOverseer(overseer).burnAndRedeemIfPossible(address(this), amountToken0, "");
+
+        emit AmountToken0Unstaked(amountToken0);
     }
 
     /**
@@ -520,6 +572,8 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         // Pool reserves are measured as balances, hence we can replenish it with token1
         // by transfering directly
         token1.safeTransfer(pool, excessNativeBalance);
+
+        emit Update();
     }
 
     /**

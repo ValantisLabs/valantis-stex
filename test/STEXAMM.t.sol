@@ -54,15 +54,15 @@ contract STEXAMMTest is Test {
     ISovereignPool pool;
 
     function setUp() public {
-        overseer = new MockOverseer();
+        token0 = new MockStHype();
+        weth = new WETH();
+
+        overseer = new MockOverseer(address(token0));
 
         protocolFactory = new ProtocolFactory(address(this));
 
         address sovereignPoolFactory = address(new SovereignPoolFactory());
         protocolFactory.setSovereignPoolFactory(sovereignPoolFactory);
-
-        token0 = new MockStHype();
-        weth = new WETH();
 
         stexLens = new STEXLens();
 

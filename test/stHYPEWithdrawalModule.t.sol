@@ -46,10 +46,10 @@ contract stHYPEWithdrawalModuleTest is Test {
     function setUp() public {
         stexLens = new STEXLens();
 
-        overseer = new MockOverseer();
-
         _token0 = new MockStHype();
         weth = new WETH();
+
+        overseer = new MockOverseer(address(_token0));
 
         _pool = address(new MockPool());
 
@@ -152,6 +152,34 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         assertEq(_withdrawalModule.token0SharesOf(recipient), shares);
         assertEq(_withdrawalModule.token0SharesToBalance(shares), amount0);
+    }
+
+    function testStakeAmount1() public {
+        assertFalse(_withdrawalModule.isLocked());
+
+        string memory communityCode = "valantis";
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.stakeToken1(1 ether, communityCode);
+
+        vm.startPrank(owner);
+
+        // No state updates
+        _withdrawalModule.stakeToken1(0, communityCode);
+
+        // Cannot be called when Sovereign Pool is locked, to prevent read-only reentrancy
+        MockPool(_pool).setIsLocked(true);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__PoolNonReentrant.selector);
+        _withdrawalModule.stakeToken1(1 ether, communityCode);
+        MockPool(_pool).setIsLocked(false);
+
+        assertEq(_token0.balanceOf(_pool), 0);
+        uint256 preToken1Balance = weth.balanceOf(address(this));
+        _withdrawalModule.stakeToken1(1 ether, communityCode);
+        assertEq(weth.balanceOf(address(this)), preToken1Balance - 1 ether);
+        assertEq(_token0.balanceOf(_pool), 1 ether);
+
+        vm.stopPrank();
     }
 
     function testAmountToken1LendingPool() public {
@@ -303,13 +331,23 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(amountToken1PendingLPWithdrawal, _withdrawalModule.convertToToken1(1 ether));
 
         vm.deal(address(_withdrawalModule), 0.5 ether);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 3 ether);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), 1 ether);
         _withdrawalModule.update();
 
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(), 3 ether - _withdrawalModule.convertToToken0(0.5 ether)
         );
+        assertEq(
+            _withdrawalModule.amountToken0PendingUnstaking(),
+            _withdrawalModule.amountToken0PendingUnstakingBeforeUpdate()
+        );
         assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0.5 ether);
         assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), amountToken1PendingLPWithdrawal - 0.5 ether);
+        assertEq(
+            _withdrawalModule.amountToken1PendingLPWithdrawal(),
+            _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate()
+        );
         assertEq(address(_withdrawalModule).balance, 0.5 ether);
         // Not enough ETH left to re-deposit into pool
         assertEq(weth.balanceOf(_pool), 0);
