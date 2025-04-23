@@ -28,7 +28,7 @@ contract LendingModuleProposalScript is Script, Test {
         address protocolFactory = 0x7E028ac56cB2AF75292F3D967978189698C24732;
 
         stHYPEWithdrawalModule withdrawalModule = stHYPEWithdrawalModule(
-            payable(0x40Ba056B004Edd0b572509A1276Fd8530cf2bb7f)
+            payable(0x69e487aA3132708d08a979b2d07c5119Bb77F698)
         );
 
         STEXAMM stex = STEXAMM(
@@ -53,7 +53,7 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(manager.keeper(), address(keeper));
 
         AaveLendingModule lendingModule = AaveLendingModule(
-            0x36baFeB0f12A13Ca579ED4080D95AC74f59e98e0
+            0xf2CE1b504205557e9Ae700Ea480Ce2d633430be1
         );
 
         // Simulate proposal
@@ -67,17 +67,17 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(lendingModuleProposed, address(lendingModule));
         assertEq(startTimestamp, block.timestamp + 3 days);
 
-        vm.warp(block.timestamp + 3 days);*/
+        vm.warp(block.timestamp + 3 days);
 
-        /*withdrawalModule.setProposedLendingModule();
+        withdrawalModule.setProposedLendingModule();
         assertEq(
             address(withdrawalModule.lendingModule()),
             address(lendingModule)
         );
-        vm.stopPrank();*/
+        vm.stopPrank();
 
         // Simulate lending module deposit
-        /*vm.startPrank(address(manager));
+        vm.startPrank(address(manager));
         withdrawalModule.supplyToken1ToLendingPool(20_000 ether);
         console.log(
             "asset balance in lending protocol: ",

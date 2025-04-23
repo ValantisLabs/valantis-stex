@@ -465,6 +465,7 @@ contract STEXAMMTest is Test {
 
     function testSetSwapFeeParams() public {
         _setSwapFeeParams(1000, 7000, 1, 20);
+        _setSwapFeeParams(11_000, 200_000, 1, 4999);
     }
 
     function _setSwapFeeParams(
@@ -477,16 +478,6 @@ contract STEXAMMTest is Test {
         swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
 
         vm.startPrank(owner);
-
-        vm.expectRevert(
-            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio.selector
-        );
-        swapFeeModule.setSwapFeeParams(10_000, maxThresholdRatioBips, feeMinBips, feeMaxBips);
-
-        vm.expectRevert(
-            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio.selector
-        );
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, 10_000 + 1, feeMinBips, feeMaxBips);
 
         vm.expectRevert(
             STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector
@@ -572,6 +563,9 @@ contract STEXAMMTest is Test {
         // Test normal deposit
 
         sharesSimulation = stexLens.getSharesForDeposit(address(stex), amount);
+        uint256 sharesSimulation2 =
+            stexLens.getSharesForDepositAndPoolReserves(address(stex), amount, reserve0, reserve1);
+        assertEq(sharesSimulation, sharesSimulation2);
         shares = stex.deposit(amount, 0, block.timestamp, recipient);
         assertEq(shares, sharesSimulation);
         assertEq(stex.balanceOf(address(1)), 1e3);
@@ -612,6 +606,44 @@ contract STEXAMMTest is Test {
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
         assertEq(preReserve1 + amount, postReserve1);
+    }
+
+    function testDeposit__FromToken0() public {
+        testDeposit();
+
+        // AMM swap fee as 1 bips
+        _setSwapFeeParams(3000, 5000, 1, 1);
+
+        address recipient = makeAddr("MOCK_RECIPIENT_FROM_TOKEN0");
+
+        token0.mint{value: 1 ether}(recipient);
+
+        vm.startPrank(recipient);
+
+        uint256 amountToken0 = 1 ether;
+        token0.approve(address(nativeWrapper), amountToken0);
+
+        vm.expectRevert(DepositWrapper.DepositWrapper__ZeroAddress.selector);
+        nativeWrapper.depositFromToken0(amountToken0, amountToken0, 0, block.timestamp, address(0));
+
+        // No state updates
+        nativeWrapper.depositFromToken0(0, 0, 0, block.timestamp, recipient);
+        assertEq(stex.balanceOf(recipient), 0);
+
+        vm.expectRevert(bytes("Excessive swap amount"));
+        stexLens.getMinAmountsForToken0Deposit(address(stex), 2 * amountToken0, 0, 0);
+
+        (uint256 amountToken1Min, uint256 minShares) =
+            stexLens.getMinAmountsForToken0Deposit(address(stex), amountToken0, 0, 0);
+
+        uint256 shares =
+            nativeWrapper.depositFromToken0(amountToken0, amountToken1Min, minShares, block.timestamp, recipient);
+        assertEq(token0.balanceOf(address(nativeWrapper)), 0);
+        assertEq(weth.balanceOf(address(nativeWrapper)), 0);
+        assertEq(stex.balanceOf(recipient), minShares);
+        assertEq(stex.balanceOf(recipient), shares);
+
+        vm.stopPrank();
     }
 
     function testDeposit__WithUpdate() public {
