@@ -43,17 +43,26 @@ contract STEXDeployScript is Script, Test {
         );
         assertEq(swapFeeModule.owner(), deployerAddress);*/
         STEXRatioSwapFeeModule swapFeeModule = STEXRatioSwapFeeModule(
-            0x69317CEcf77Fb5dc68aBE5C7aAfB283De46956d9
+            0x18cdf91aF34E44D4B4CF5e86b31B42BD86569418
         );
+        // Uncomment to generate payload to propose Swap Fee Module update under timelock
+        /*bytes memory swapFeeModuleProposalPayload = abi.encodeWithSelector(
+            STEXAMM.proposeSwapFeeModule.selector,
+            address(swapFeeModule),
+            3 days
+        );
+        console.log("payload for swap fee module proposal: ");
+        console.logBytes(swapFeeModuleProposalPayload);*/
+        // Uncomment to transfer ownership of Swap Fee Module
         //swapFeeModule.transferOwnership(ownerMultisig);
         assertEq(swapFeeModule.owner(), ownerMultisig);
 
         // Uncomment to set Swap Fee Module params
         /*{
-            uint32 minThresholdRatioBips = 3_000;
-            uint32 maxThresholdRatioBips = 7_000;
-            uint32 feeMinBips = 5;
-            uint32 feeMaxBips = 40;
+            uint32 minThresholdRatioBips = 4_000;
+            uint32 maxThresholdRatioBips = 9_500;
+            uint32 feeMinBips = 1;
+            uint32 feeMaxBips = 1;
 
             bytes memory payload = abi.encodeWithSelector(
                 STEXRatioSwapFeeModule.setSwapFeeParams.selector,
@@ -66,12 +75,14 @@ contract STEXDeployScript is Script, Test {
             console.log("payload for swapFeeModule.setSwapFeeParams: ");
             console.logBytes(payload);
 
-            // swapFeeModule.setSwapFeeParams(
-            //    minThresholdRatioBips,
-            //    maxThresholdRatioBips,
-            //    feeMinBips,
-            //    feeMaxBips
-            // );
+            vm.startPrank(ownerMultisig);
+            swapFeeModule.setSwapFeeParams(
+                minThresholdRatioBips,
+                maxThresholdRatioBips,
+                feeMinBips,
+                feeMaxBips
+            );
+            vm.stopPrank();
         }*/
         /*{
             (
@@ -80,10 +91,10 @@ contract STEXDeployScript is Script, Test {
                 uint32 feeMinBips,
                 uint32 feeMaxBips
             ) = swapFeeModule.feeParams();
-            assertEq(minThresholdRatioBips, 3_000);
-            assertEq(maxThresholdRatioBips, 7_000);
-            assertEq(feeMinBips, 5);
-            assertEq(feeMaxBips, 40);
+            assertEq(minThresholdRatioBips, 4_000);
+            assertEq(maxThresholdRatioBips, 9_500);
+            assertEq(feeMinBips, 1);
+            assertEq(feeMaxBips, 1);
         }*/
 
         // Uncomment for deployment of Withdrawal Module
@@ -94,7 +105,7 @@ contract STEXDeployScript is Script, Test {
         assertEq(withdrawalModule.owner(), deployerAddress);
         assertEq(withdrawalModule.overseer(), overseer);*/
         stHYPEWithdrawalModule withdrawalModule = stHYPEWithdrawalModule(
-            payable(0x40Ba056B004Edd0b572509A1276Fd8530cf2bb7f)
+            payable(0x69e487aA3132708d08a979b2d07c5119Bb77F698)
         );
 
         // Uncomment for deployment of STEX AMM

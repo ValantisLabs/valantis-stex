@@ -65,25 +65,40 @@ contract STEXLens {
 
     function getSharesForDeposit(address stex, uint256 amount) external view returns (uint256) {
         ISTEXAMM stexInterface = ISTEXAMM(stex);
-        uint256 totalSupplyCache = ERC20(stex).totalSupply();
-        if (totalSupplyCache == 0) {
-            return amount - MINIMUM_LIQUIDITY;
-        }
-        IWithdrawalModule withdrawalModule = IWithdrawalModule(stexInterface.withdrawalModule());
         (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
-        // Account for token0 in pool (liquid) and pending unstaking (locked)
-        uint256 reserve0Total = reserve0Pool + withdrawalModule.amountToken0PendingUnstaking();
-        // Account for token1 pending withdrawal to LPs (locked)
-        uint256 reserve1PendingWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
-        // shares calculated in terms of token1
-        uint256 shares = Math.mulDiv(
-            amount,
-            totalSupplyCache,
-            reserve1Pool + withdrawalModule.amountToken1LendingPool() + withdrawalModule.convertToToken1(reserve0Total)
-                - reserve1PendingWithdrawal
-        );
+        return _getSharesForDeposit(stex, amount, reserve0Pool, reserve1Pool);
+    }
 
-        return shares;
+    function getSharesForDepositAndPoolReserves(
+        address stex,
+        uint256 amount,
+        uint256 reserve0Pool,
+        uint256 reserve1Pool
+    ) external view returns (uint256) {
+        return _getSharesForDeposit(stex, amount, reserve0Pool, reserve1Pool);
+    }
+
+    function getMinAmountsForToken0Deposit(
+        address stex,
+        uint256 amountToken0,
+        uint256 slippageSwapBips,
+        uint256 slippageDepositBips
+    ) external view returns (uint256 amountToken1Min, uint256 minShares) {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+
+        (uint256 reserve0Pool, uint256 reserve1Pool) = ISovereignPool(stexInterface.pool()).getReserves();
+
+        uint256 amountToken1 = stexInterface.getAmountOut(stexInterface.token0(), amountToken0, false);
+        require(amountToken1 <= reserve1Pool, "Excessive swap amount");
+
+        amountToken1Min = (amountToken1 * (BIPS - slippageSwapBips)) / BIPS;
+
+        reserve0Pool += amountToken0;
+        reserve1Pool -= amountToken1Min;
+
+        uint256 shares = _getSharesForDeposit(stex, amountToken1Min, reserve0Pool, reserve1Pool);
+
+        minShares = (shares * (BIPS - slippageDepositBips)) / BIPS;
     }
 
     function getAmountsForWithdraw(address stex, uint256 shares, bool isInstantWithdrawal)
@@ -182,5 +197,36 @@ contract STEXLens {
         }
 
         return true;
+    }
+
+    /**
+     *
+     *  PRIVATE FUNCTIONS
+     *
+     */
+    function _getSharesForDeposit(address stex, uint256 amount, uint256 reserve0Pool, uint256 reserve1Pool)
+        private
+        view
+        returns (uint256)
+    {
+        ISTEXAMM stexInterface = ISTEXAMM(stex);
+        uint256 totalSupplyCache = ERC20(stex).totalSupply();
+        if (totalSupplyCache == 0) {
+            return amount - MINIMUM_LIQUIDITY;
+        }
+        IWithdrawalModule withdrawalModule = IWithdrawalModule(stexInterface.withdrawalModule());
+        // Account for token0 in pool (liquid) and pending unstaking (locked)
+        uint256 reserve0Total = reserve0Pool + withdrawalModule.amountToken0PendingUnstaking();
+        // Account for token1 pending withdrawal to LPs (locked)
+        uint256 reserve1PendingWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+        // shares calculated in terms of token1
+        uint256 shares = Math.mulDiv(
+            amount,
+            totalSupplyCache,
+            reserve1Pool + withdrawalModule.amountToken1LendingPool() + withdrawalModule.convertToToken1(reserve0Total)
+                - reserve1PendingWithdrawal
+        );
+
+        return shares;
     }
 }

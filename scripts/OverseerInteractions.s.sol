@@ -25,7 +25,7 @@ contract OverseerInteractionsScript is Script, Test {
         );
 
         IWithdrawalModule withdrawalModule = IWithdrawalModule(
-            0xc7267F6cc4B4f61a025A797ef03c11285E6b630C
+            0x69e487aA3132708d08a979b2d07c5119Bb77F698
         );
 
         uint256[] memory burnIds = overseer.getBurnIds(

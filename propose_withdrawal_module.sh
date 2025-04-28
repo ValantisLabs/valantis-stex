@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/WithdrawalModuleProposal.s.sol:WithdrawalModuleProposalScript --rpc-url $RPC_URL

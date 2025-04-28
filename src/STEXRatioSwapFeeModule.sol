@@ -24,8 +24,6 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
     error STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams();
     error STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin();
     error STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax();
-    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
-    error STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
     error STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
     error STEXRatioSwapFeeModule__setPool_alreadySet();
 
@@ -158,13 +156,6 @@ contract STEXRatioSwapFeeModule is ISTEXRatioSwapFeeModule, Ownable {
         uint32 _feeMinBips,
         uint32 _feeMaxBips
     ) external override onlyOwner {
-        // Reserve ratio threshold params must be in BIPS
-        if (_minThresholdRatioBips >= BIPS) {
-            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidMinThresholdRatio();
-        }
-        if (_maxThresholdRatioBips > BIPS) {
-            revert STEXRatioSwapFeeModule__setSwapFeeParams_invalidMaxThresholdRatio();
-        }
         if (_minThresholdRatioBips >= _maxThresholdRatioBips) {
             revert STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams();
         }
