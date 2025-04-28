@@ -54,7 +54,7 @@ contract WithdrawalModuleStakingScript is Script, Test {
         /*vm.startPrank(ownerMultisig);
 
         (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        uint256 amountToStake = 50_000 ether;
+        uint256 amountToStake = 12_000 ether;
         string memory communityCode = "0x6e616e73656e";
         bytes memory payloadStakeToken1 = abi.encodeWithSelector(
             stHYPEWithdrawalModule.stakeToken1.selector,

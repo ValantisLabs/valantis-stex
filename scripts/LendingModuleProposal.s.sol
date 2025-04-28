@@ -148,8 +148,8 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(
             address(withdrawalModule.lendingModule()),
             address(lendingModule)
-        );
+        );*/
 
-        vm.stopPrank();*/
+        vm.stopPrank();
     }
 }
