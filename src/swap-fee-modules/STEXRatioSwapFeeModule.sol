@@ -5,10 +5,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SwapFeeModuleData} from "@valantis-core/swap-fee-modules/interfaces/ISwapFeeModule.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
-import {FeeParams} from "./structs/STEXRatioSwapFeeModuleStructs.sol";
-import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
-import {ISTEXRatioSwapFeeModule} from "./interfaces/ISTEXRatioSwapFeeModule.sol";
-import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
+import {FeeParams} from "../structs/STEXRatioSwapFeeModuleStructs.sol";
+import {ISTEXAMM} from "../interfaces/ISTEXAMM.sol";
+import {ISTEXRatioSwapFeeModule} from "../interfaces/ISTEXRatioSwapFeeModule.sol";
+import {IWithdrawalModule} from "../interfaces/IWithdrawalModule.sol";
 
 /**
  * @title Stake Exchange: Reserves Ratio based Swap Fee Module.

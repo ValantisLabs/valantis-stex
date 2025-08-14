@@ -5,21 +5,21 @@ import {Test} from "forge-std/Test.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {WithdrawalModuleKeeper} from "src/owner/WithdrawalModuleKeeper.sol";
-import {WithdrawalModuleManager} from "src/owner/WithdrawalModuleManager.sol";
+import {stHYPEWithdrawalModuleKeeper} from "src/owner/stHYPEWithdrawalModuleKeeper.sol";
+import {stHYPEWithdrawalModuleManager} from "src/owner/stHYPEWithdrawalModuleManager.sol";
 
-contract WithdrawalModuleKeeperTest is Test {
-    WithdrawalModuleKeeper keeper;
-    WithdrawalModuleManager manager;
+contract stHYPEWithdrawalModuleKeeperTest is Test {
+    stHYPEWithdrawalModuleKeeper keeper;
+    stHYPEWithdrawalModuleManager manager;
 
     address public keeperAccount1 = makeAddr("KEEPER_ACCOUNT_1");
     address public keeperAccount2 = makeAddr("KEEPER_ACCOUNT_2");
 
     function setUp() public {
-        keeper = new WithdrawalModuleKeeper(address(this));
+        keeper = new stHYPEWithdrawalModuleKeeper(address(this));
         assertEq(keeper.owner(), address(this));
 
-        manager = new WithdrawalModuleManager(address(this), address(keeper));
+        manager = new stHYPEWithdrawalModuleManager(address(this), address(keeper));
         assertEq(manager.owner(), address(this));
         assertEq(manager.keeper(), address(keeper));
 
@@ -68,32 +68,32 @@ contract WithdrawalModuleKeeperTest is Test {
     /// End of Overseer mock functions ///
 
     function testDeployments() public {
-        WithdrawalModuleKeeper keeperDeployment = new WithdrawalModuleKeeper(address(this));
+        stHYPEWithdrawalModuleKeeper keeperDeployment = new stHYPEWithdrawalModuleKeeper(address(this));
         assertEq(keeperDeployment.owner(), address(this));
 
-        vm.expectRevert(WithdrawalModuleManager.WithdrawalModuleManager__ZeroAddress.selector);
-        new WithdrawalModuleManager(address(this), address(0));
+        vm.expectRevert(stHYPEWithdrawalModuleManager.stHYPEWithdrawalModuleManager__ZeroAddress.selector);
+        new stHYPEWithdrawalModuleManager(address(this), address(0));
 
-        WithdrawalModuleManager managerDeployment =
-            new WithdrawalModuleManager(address(this), address(keeperDeployment));
+        stHYPEWithdrawalModuleManager managerDeployment =
+            new stHYPEWithdrawalModuleManager(address(this), address(keeperDeployment));
         assertEq(managerDeployment.owner(), address(this));
         assertEq(managerDeployment.keeper(), address(keeperDeployment));
     }
 
     function testKeeperWhitelist() public {
-        vm.expectRevert(WithdrawalModuleKeeper.WithdrawalModuleKeeper__ZeroAddress.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleKeeper.stHYPEWithdrawalModuleKeeper__ZeroAddress.selector);
         keeper.setKeeper(address(0));
 
         keeper.setKeeper(keeperAccount2);
         assertTrue(keeper.isKeeper(keeperAccount2));
 
-        vm.expectRevert(WithdrawalModuleKeeper.WithdrawalModuleKeeper__ZeroAddress.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleKeeper.stHYPEWithdrawalModuleKeeper__ZeroAddress.selector);
         keeper.removeKeeper(address(0));
 
         keeper.removeKeeper(keeperAccount2);
         assertFalse(keeper.isKeeper(keeperAccount2));
 
-        vm.expectRevert(WithdrawalModuleManager.WithdrawalModuleManager__ZeroAddress.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleManager.stHYPEWithdrawalModuleManager__ZeroAddress.selector);
         manager.setKeeper(address(0));
 
         manager.setKeeper(keeperAccount2);
@@ -105,19 +105,19 @@ contract WithdrawalModuleKeeperTest is Test {
 
         // Only keeper can call the following functions
 
-        vm.expectRevert(WithdrawalModuleManager.WithdrawalModuleManager__OnlyKeeper.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleManager.stHYPEWithdrawalModuleManager__OnlyKeeper.selector);
         manager.unstakeToken0Reserves(withdrawalModule, 1 ether);
 
         vm.prank(address(keeper));
         manager.unstakeToken0Reserves(withdrawalModule, 1 ether);
 
-        vm.expectRevert(WithdrawalModuleManager.WithdrawalModuleManager__OnlyKeeper.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleManager.stHYPEWithdrawalModuleManager__OnlyKeeper.selector);
         manager.supplyToken1ToLendingPool(withdrawalModule, 1 ether);
 
         vm.prank(address(keeper));
         manager.supplyToken1ToLendingPool(withdrawalModule, 1 ether);
 
-        vm.expectRevert(WithdrawalModuleManager.WithdrawalModuleManager__OnlyKeeper.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleManager.stHYPEWithdrawalModuleManager__OnlyKeeper.selector);
         manager.withdrawToken1FromLendingPool(withdrawalModule, 1 ether);
 
         vm.prank(address(keeper));
@@ -151,7 +151,7 @@ contract WithdrawalModuleKeeperTest is Test {
     function testKeeperContract__call() public {
         address withdrawalModule = address(this);
 
-        vm.expectRevert(WithdrawalModuleKeeper.WithdrawalModuleKeeper__call_onlyKeeper.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleKeeper.stHYPEWithdrawalModuleKeeper__call_onlyKeeper.selector);
         vm.prank(keeperAccount2);
         keeper.call(address(manager), new bytes(0));
 
@@ -161,29 +161,31 @@ contract WithdrawalModuleKeeperTest is Test {
 
         keeper.call(
             address(manager),
-            abi.encodeWithSelector(WithdrawalModuleManager.unstakeToken0Reserves.selector, withdrawalModule, 1 ether)
-        );
-
-        keeper.call(
-            address(manager),
             abi.encodeWithSelector(
-                WithdrawalModuleManager.supplyToken1ToLendingPool.selector, withdrawalModule, 1 ether
+                stHYPEWithdrawalModuleManager.unstakeToken0Reserves.selector, withdrawalModule, 1 ether
             )
         );
 
         keeper.call(
             address(manager),
             abi.encodeWithSelector(
-                WithdrawalModuleManager.withdrawToken1FromLendingPool.selector, withdrawalModule, 1 ether
+                stHYPEWithdrawalModuleManager.supplyToken1ToLendingPool.selector, withdrawalModule, 1 ether
+            )
+        );
+
+        keeper.call(
+            address(manager),
+            abi.encodeWithSelector(
+                stHYPEWithdrawalModuleManager.withdrawToken1FromLendingPool.selector, withdrawalModule, 1 ether
             )
         );
 
         // `call` from WithdrawalModuleManager cannot be called by keeper contract
 
-        vm.expectRevert(WithdrawalModuleKeeper.WithdrawalModuleKeeper__call_callFailed.selector);
+        vm.expectRevert(stHYPEWithdrawalModuleKeeper.stHYPEWithdrawalModuleKeeper__call_callFailed.selector);
         keeper.call(
             address(manager),
-            abi.encodeWithSelector(WithdrawalModuleManager.call.selector, withdrawalModule, new bytes(0))
+            abi.encodeWithSelector(stHYPEWithdrawalModuleManager.call.selector, withdrawalModule, new bytes(0))
         );
     }
 

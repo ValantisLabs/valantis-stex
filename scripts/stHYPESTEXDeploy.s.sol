@@ -4,15 +4,15 @@ pragma solidity ^0.8.25;
 import "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 
-import {AaveLendingModule} from "src/AaveLendingModule.sol";
+import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {STEXAMM} from "src/STEXAMM.sol";
-import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
-import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
+import {STEXRatioSwapFeeModule} from "src/swap-fee-modules/STEXRatioSwapFeeModule.sol";
+import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
-import {WithdrawalModuleManager} from "src/owner/WithdrawalModuleManager.sol";
-import {WithdrawalModuleKeeper} from "src/owner/WithdrawalModuleKeeper.sol";
+import {stHYPEWithdrawalModuleManager} from "src/owner/stHYPEWithdrawalModuleManager.sol";
+import {stHYPEWithdrawalModuleKeeper} from "src/owner/stHYPEWithdrawalModuleKeeper.sol";
 
-contract STEXDeployScript is Script, Test {
+contract stHYPESTEXDeployScript is Script, Test {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployerAddress = vm.addr(deployerPrivateKey);
@@ -162,16 +162,16 @@ contract STEXDeployScript is Script, Test {
             address(stex)
         );*/
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0x644195021278674bd8F7574e17018d32d8E75A98)
+            payable(0x640b752B6452C7FeE6afE15e0667EBeB058aB0D2)
         );
 
         // Uncomment for deployment of withdrawal module's keeper
-        /*WithdrawalModuleKeeper keeper = new WithdrawalModuleKeeper(
+        /*stHYPEWithdrawalModuleKeeper keeper = new stHYPEWithdrawalModuleKeeper(
             deployerAddress
         );
         assertEq(keeper.owner(), deployerAddress);
         console.log("keeper deployed: ", address(keeper));*/
-        WithdrawalModuleKeeper keeper = WithdrawalModuleKeeper(
+        stHYPEWithdrawalModuleKeeper keeper = stHYPEWithdrawalModuleKeeper(
             0x0Aef1eAAd539C16292faEB16D3F4AB5842F0aa6c
         );
         /*address keeperEOA = 0x6Fa0b094b71EF7fcA715177242682bdf1954e2e8;
@@ -181,13 +181,13 @@ contract STEXDeployScript is Script, Test {
         assertEq(keeper.owner(), ownerMultisig);
 
         // Uncomment for deployment of withdrawal module's owner
-        /*WithdrawalModuleManager manager = new WithdrawalModuleManager(
+        /*stHYPEWithdrawalModuleManager manager = new stHYPEWithdrawalModuleManager(
             deployerAddress,
             address(keeper)
         );*/
         //assertEq(manager.owner(), deployerAddress);
         //assertEq(manager.keeper(), address(keeper));
-        WithdrawalModuleManager manager = WithdrawalModuleManager(
+        stHYPEWithdrawalModuleManager manager = stHYPEWithdrawalModuleManager(
             0x80c7f89398160fCD9E74519f63F437459E5d02E2
         );
         //manager.transferOwnership(ownerMultisig);

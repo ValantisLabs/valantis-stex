@@ -15,6 +15,8 @@ contract MockLendingPool is IPool {
 
     bool public isCompromised;
 
+    bool public isExcessTransfer;
+
     mapping(address account => uint256) private _shares;
 
     uint256 private _totalSupply;
@@ -31,6 +33,10 @@ contract MockLendingPool is IPool {
 
     function setIsCompromised(bool value) public {
         isCompromised = value;
+    }
+
+    function setIsExcessTransfer(bool value) public {
+        isExcessTransfer = value;
     }
 
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 /*referralCode*/ ) external override {
@@ -64,7 +70,12 @@ contract MockLendingPool is IPool {
         _shares[msg.sender] -= shares;
         _totalSupply -= shares;
 
-        ERC20(asset).safeTransfer(to, isCompromised ? 0 : amount);
+        uint256 amountToTransfer = isCompromised ? 0 : amount;
+        if (isExcessTransfer) {
+            amountToTransfer += 1;
+        }
+
+        ERC20(asset).safeTransfer(to, amountToTransfer);
 
         return amount;
     }

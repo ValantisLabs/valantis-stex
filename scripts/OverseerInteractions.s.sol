@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 import "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 
-import {IOverseer} from "src/interfaces/IOverseer.sol";
+import {IOverseer} from "src/interfaces/sthype/IOverseer.sol";
 import {IWithdrawalModule} from "src/interfaces/IWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 

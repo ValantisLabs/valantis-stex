@@ -10,13 +10,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
-import {IOverseer} from "./interfaces/IOverseer.sol";
-import {IstHYPE} from "./interfaces/IstHYPE.sol";
-import {IWithdrawalModule} from "./interfaces/IWithdrawalModule.sol";
-import {IWETH9} from "./interfaces/IWETH9.sol";
-import {ISTEXAMM} from "./interfaces/ISTEXAMM.sol";
-import {ILendingModule} from "./interfaces/ILendingModule.sol";
-import {LPWithdrawalRequest, LendingModuleProposal} from "./structs/WithdrawalModuleStructs.sol";
+import {IOverseer} from "../interfaces/sthype/IOverseer.sol";
+import {IstHYPE} from "../interfaces/sthype/IstHYPE.sol";
+import {IWithdrawalModule} from "../interfaces/IWithdrawalModule.sol";
+import {IWETH9} from "../interfaces/IWETH9.sol";
+import {ISTEXAMM} from "../interfaces/ISTEXAMM.sol";
+import {ILendingModule} from "../interfaces/ILendingModule.sol";
+import {LPWithdrawalRequest, LendingModuleProposal} from "../structs/WithdrawalModuleStructs.sol";
 
 /**
  * @notice Withdrawal Module for integration between STEX AMM and Thunderheads' Staked Hype,
@@ -32,16 +32,17 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  EVENTS
      *
      */
-    event STEXSet(address stex);
-    event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
-    event LPWithdrawalRequestClaimed(uint256 id);
-    event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
-    event LendingModuleProposalCancelled();
-    event LendingModuleSet(address lendingModule);
-    event AmountToken1Staked(uint256 amount);
-    event AmountToken0Unstaked(uint256 amount);
     event AmountSuppliedToLendingModule(uint256 amount);
+    event AmountToken0Unstaked(uint256 amount);
+    event AmountToken1Staked(uint256 amount);
     event AmountWithdrawnFromLendingModule(uint256 amount);
+    event LendingModuleProposalCancelled();
+    event LendingModuleProposed(address lendingModule, uint256 startTimestamp);
+    event LendingModuleSet(address lendingModule);
+    event LPWithdrawalRequestClaimed(uint256 id);
+    event LPWithdrawalRequestCreated(uint256 id, uint256 amountToken1, address recipient);
+    event STEXSet(address stex);
+    event Sweep(address indexed token, address indexed recipient, uint256 balance);
     event Update();
 
     /**
@@ -49,20 +50,22 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  CUSTOM ERRORS
      *
      */
-    error stHYPEWithdrawalModule__ZeroAddress();
     error stHYPEWithdrawalModule__OnlySTEX();
     error stHYPEWithdrawalModule__OnlySTEXOrOwner();
     error stHYPEWithdrawalModule__PoolNonReentrant();
-    error stHYPEWithdrawalModule__claim_alreadyClaimed();
-    error stHYPEWithdrawalModule__claim_cannotYetClaim();
-    error stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
-    error stHYPEWithdrawalModule__setSTEX_AlreadySet();
-    error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
-    error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
-    error stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh();
+    error stHYPEWithdrawalModule__ZeroAddress();
+    error stHYPEWithdrawalModule__claim_AlreadyClaimed();
+    error stHYPEWithdrawalModule__claim_CannotYetClaim();
+    error stHYPEWithdrawalModule__claim_InsufficientAmountToClaim();
     error stHYPEWithdrawalModule__proposeLendingModule_ProposalAlreadyActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
     error stHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
+    error stHYPEWithdrawalModule__setSTEX_AlreadySet();
+    error stHYPEWithdrawalModule__sweep_Token0CannotBeSweeped();
+    error stHYPEWithdrawalModule__sweep_Token1CannotBeSweeped();
+    error stHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn();
+    error stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooLow();
+    error stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooHigh();
 
     /**
      *
@@ -82,6 +85,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      * @notice Overseer contract from Thunderheads' Liquid Staking Protocol.
      */
     address public immutable overseer;
+
+    /**
+     * @notice wstHYPE token address.
+     */
+    address public immutable wstHYPE;
 
     /**
      *
@@ -154,13 +162,14 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
      *  CONSTRUCTOR
      *
      */
-    constructor(address _overseer, address _owner) Ownable(_owner) {
+    constructor(address _overseer, address _wstHYPE, address _owner) Ownable(_owner) {
         // _lendingPool can be zero address, in case it is not set
-        if (_overseer == address(0) || _owner == address(0)) {
+        if (_overseer == address(0) || _wstHYPE == address(0) || _owner == address(0)) {
             revert stHYPEWithdrawalModule__ZeroAddress();
         }
 
         overseer = _overseer;
+        wstHYPE = _wstHYPE;
     }
 
     /**
@@ -330,6 +339,34 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
     }
 
     /**
+     * @notice Sweep token balances which have been locked into this contract.
+     * @dev Only callable by `owner`.
+     * @param _token Token address to claim balances for.
+     * @param _recipient Recipient of `_token` balance.
+     */
+    function sweep(address _token, address _recipient) external onlyOwner {
+        if (_token == address(0)) revert stHYPEWithdrawalModule__ZeroAddress();
+        if (_recipient == address(0)) {
+            revert stHYPEWithdrawalModule__ZeroAddress();
+        }
+
+        // stHYPE and wstHYPE are not sweepable
+        if (_token == ISTEXAMM(stex).token0() || _token == wstHYPE) {
+            revert stHYPEWithdrawalModule__sweep_Token0CannotBeSweeped();
+        }
+        if (_token == ISTEXAMM(stex).token1()) {
+            revert stHYPEWithdrawalModule__sweep_Token1CannotBeSweeped();
+        }
+
+        uint256 balance = ERC20(_token).balanceOf(address(this));
+        if (balance > 0) {
+            ERC20(_token).safeTransfer(_recipient, balance);
+
+            emit Sweep(_token, _recipient, balance);
+        }
+    }
+
+    /**
      * @notice Propose an update to Lending Module.
      * @dev Only callable by `owner`.
      * @dev WARNING: This is a critical dependency which affects the solvency of the pool and this contract,
@@ -384,6 +421,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
         // Set new lending module
         lendingModule = ILendingModule(lendingModuleProposal.lendingModule);
+
+        // Sanity check that it is possible to query `assetBalance` from the new lending module
+        lendingModule.assetBalance();
 
         delete lendingModuleProposal;
 
@@ -454,7 +494,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         uint256 postBalance = ERC20(token1).balanceOf(recipient);
         // Ensure that recipient gets at least `_amountToken1` worth of token1
         if (postBalance - preBalance < _amountToken1) {
-            revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn();
+            revert stHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn();
         }
 
         emit AmountWithdrawnFromLendingModule(_amountToken1);
@@ -561,6 +601,9 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             amountToken1ClaimableLPWithdrawal += excessNativeBalance;
             cumulativeAmountToken1ClaimableLPWithdrawal += excessNativeBalance;
             excessNativeBalance = 0;
+
+            emit Update();
+
             return;
         }
 
@@ -587,12 +630,12 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
         LPWithdrawalRequest memory request = LPWithdrawals[_idLPQueue];
 
         if (request.amountToken1 == 0) {
-            revert stHYPEWithdrawalModule__claim_alreadyClaimed();
+            revert stHYPEWithdrawalModule__claim_AlreadyClaimed();
         }
 
         // Check if there is enough ETH available to fulfill this request
         if (amountToken1ClaimableLPWithdrawal < request.amountToken1) {
-            revert stHYPEWithdrawalModule__claim_insufficientAmountToClaim();
+            revert stHYPEWithdrawalModule__claim_InsufficientAmountToClaim();
         }
 
         // Check if it is the right time to claim (according to queue priority)
@@ -600,7 +643,7 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
             cumulativeAmountToken1ClaimableLPWithdrawal
                 < request.cumulativeAmountToken1LPWithdrawalCheckpoint + request.amountToken1
         ) {
-            revert stHYPEWithdrawalModule__claim_cannotYetClaim();
+            revert stHYPEWithdrawalModule__claim_CannotYetClaim();
         }
 
         amountToken1ClaimableLPWithdrawal -= request.amountToken1;
@@ -631,11 +674,11 @@ contract stHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, 
 
     function _verifyTimelockDelay(uint256 _timelockDelay) private pure {
         if (_timelockDelay < MIN_TIMELOCK_DELAY) {
-            revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow();
+            revert stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooLow();
         }
 
         if (_timelockDelay > MAX_TIMELOCK_DELAY) {
-            revert stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh();
+            revert stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooHigh();
         }
     }
 }

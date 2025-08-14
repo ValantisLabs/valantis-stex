@@ -19,6 +19,14 @@ contract DepositWrapper is ReentrancyGuardTransient {
 
     /**
      *
+     *  EVENTS
+     *
+     */
+    event DepositFromNativeWithCode(uint256 nativeTokenAmount, uint256 shares, address recipient, bytes32 code);
+    event DepositFromToken0WithCode(uint256 amountToken0, uint256 shares, address recipient, bytes32 code);
+
+    /**
+     *
      *  CUSTOM ERRORS
      *
      */
@@ -74,14 +82,21 @@ contract DepositWrapper is ReentrancyGuardTransient {
         nonReentrant
         returns (uint256 shares)
     {
-        if (_recipient == address(0)) revert DepositWrapper__ZeroAddress();
+        shares = _depositFromNative(_minShares, _deadline, _recipient);
+    }
 
-        uint256 amount = msg.value;
-        if (amount == 0) return 0;
+    /**
+     * @notice Same as `depositFromNative`, but emits an event with `_code`.
+     */
+    function depositFromNativeWithCode(uint256 _minShares, uint256 _deadline, address _recipient, bytes32 _code)
+        external
+        payable
+        nonReentrant
+        returns (uint256 shares)
+    {
+        shares = _depositFromNative(_minShares, _deadline, _recipient);
 
-        _wrapAndApprove(amount, address(stex));
-
-        shares = stex.deposit(amount, _minShares, _deadline, _recipient);
+        emit DepositFromNativeWithCode(msg.value, shares, _recipient, _code);
     }
 
     /**
@@ -100,6 +115,51 @@ contract DepositWrapper is ReentrancyGuardTransient {
         uint256 _deadline,
         address _recipient
     ) external nonReentrant returns (uint256 shares) {
+        shares = _depositFromToken0(_amountToken0, _amountToken1Min, _minShares, _deadline, _recipient);
+    }
+
+    /**
+     * @notice Same as `depositFromToken0WithCode`, but emits an event with `_code`.
+     */
+    function depositFromToken0WithCode(
+        uint256 _amountToken0,
+        uint256 _amountToken1Min,
+        uint256 _minShares,
+        uint256 _deadline,
+        address _recipient,
+        bytes32 _code
+    ) external nonReentrant returns (uint256 shares) {
+        shares = _depositFromToken0(_amountToken0, _amountToken1Min, _minShares, _deadline, _recipient);
+
+        emit DepositFromToken0WithCode(_amountToken0, shares, _recipient, _code);
+    }
+
+    /**
+     *
+     *  PRIVATE FUNCTIONS
+     *
+     */
+    function _depositFromNative(uint256 _minShares, uint256 _deadline, address _recipient)
+        private
+        returns (uint256 shares)
+    {
+        if (_recipient == address(0)) revert DepositWrapper__ZeroAddress();
+
+        uint256 amount = msg.value;
+        if (amount == 0) return 0;
+
+        _wrapAndApprove(amount, address(stex));
+
+        shares = stex.deposit(amount, _minShares, _deadline, _recipient);
+    }
+
+    function _depositFromToken0(
+        uint256 _amountToken0,
+        uint256 _amountToken1Min,
+        uint256 _minShares,
+        uint256 _deadline,
+        address _recipient
+    ) private returns (uint256 shares) {
         if (_recipient == address(0)) revert DepositWrapper__ZeroAddress();
 
         if (_amountToken0 == 0) return 0;
@@ -126,11 +186,6 @@ contract DepositWrapper is ReentrancyGuardTransient {
         shares = stex.deposit(amountToken1, _minShares, _deadline, _recipient);
     }
 
-    /**
-     *
-     *  PRIVATE FUNCTIONS
-     *
-     */
     function _wrapAndApprove(uint256 amount, address to) private {
         weth.deposit{value: amount}();
         weth.forceApprove(to, amount);

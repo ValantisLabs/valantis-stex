@@ -5,8 +5,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {ILendingModule} from "./interfaces/ILendingModule.sol";
-import {IPool} from "./interfaces/aavev3/IPool.sol";
+import {ILendingModule} from "../interfaces/ILendingModule.sol";
+import {IPool} from "../interfaces/aavev3/IPool.sol";
 
 /**
  * @notice Wrapper contract that allows its owner to lend an underlying token on AAVE V3 pools.

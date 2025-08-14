@@ -11,7 +11,7 @@ import {SovereignPoolSwapParams} from "@valantis-core/pools/structs/SovereignPoo
 
 import {STEXAMM} from "src/STEXAMM.sol";
 
-contract STEXSwapScript is Script, Test {
+contract kHYPESTEXSwapScript is Script, Test {
     using SafeERC20 for ERC20;
 
     function run() external {
@@ -25,14 +25,14 @@ contract STEXSwapScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         STEXAMM stex = STEXAMM(
-            payable(0xd43d4444fc88E1fC205AA303DBd52aCf3493Fd02)
+            payable(0x38257bbEc97bBFd605d8c9770e66CFA0E7A47242)
         );
 
         address token0 = stex.token0();
         address token1 = stex.token1();
 
         address tokenIn = token0;
-        uint256 amount = 0.005 ether;
+        uint256 amount = 0.01 ether;
 
         uint256 amountOut = stex.getAmountOut(tokenIn, amount, false);
 

@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/StepwiseFeeModuleDeploy.s.sol:StepwiseFeeModuleDeployScript --rpc-url $RPC_URL

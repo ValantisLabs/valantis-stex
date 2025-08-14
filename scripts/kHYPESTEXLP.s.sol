@@ -8,7 +8,7 @@ import {STEXLens} from "src/STEXLens.sol";
 import {STEXAMM} from "src/STEXAMM.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
 
-contract STEXLPScript is Script, Test {
+contract kHYPESTEXLPScript is Script, Test {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployerAddress = vm.addr(deployerPrivateKey);
@@ -20,18 +20,18 @@ contract STEXLPScript is Script, Test {
         vm.startBroadcast(deployerPrivateKey);
 
         STEXLens stexLens = STEXLens(
-            0x68675DC8406252b6950128f6504A5E287Ef24ED0
+            0x95e88072c3fe908101a13584d7A0ff87DaDd88f3
         );
         STEXAMM stex = STEXAMM(
-            payable(0x39694eFF3b02248929120c73F90347013Aec834d)
+            payable(0xbf747D2959F03332dbd25249dB6f00F62c6Cb526)
         );
 
         // Uncomment for deposits
-        /*uint256 amount = 1 ether;
+        /*uint256 amount = 0.01 ether;
         uint256 shares = stexLens.getSharesForDeposit(address(stex), amount);
 
         DepositWrapper depositWrapper = DepositWrapper(
-            payable(0x640b752B6452C7FeE6afE15e0667EBeB058aB0D2)
+            payable(0xA2918c869e352ADdd5b1f9f12cDe5672B23f139d)
         );
         uint256 sharesDeposited = depositWrapper.depositFromNative{
             value: amount
