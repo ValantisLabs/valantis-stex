@@ -5,35 +5,37 @@ import "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 
+import {ERC4626LendingModule} from "src/lending-modules/ERC4626LendingModule.sol";
 import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {MultiMarketLendingModule} from "src/lending-modules/MultiMarketLendingModule.sol";
 import {STEXAMM} from "src/STEXAMM.sol";
-import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
-import {stHYPEWithdrawalModuleKeeper} from "src/owner/stHYPEWithdrawalModuleKeeper.sol";
-import {stHYPEWithdrawalModuleManager} from "src/owner/stHYPEWithdrawalModuleManager.sol";
+import {kHYPEWithdrawalModule} from "src/withdrawal-modules/kHYPEWithdrawalModule.sol";
+import {kHYPEWithdrawalModuleKeeper} from "src/owner/kHYPEWithdrawalModuleKeeper.sol";
+import {kHYPEWithdrawalModuleManager} from "src/owner/kHYPEWithdrawalModuleManager.sol";
 
-contract LendingModuleProposalScript is Script, Test {
+contract kHYPESTEXLendingModuleProposalScript is Script, Test {
     function run() external {
         if (block.chainid != 999) revert("Chain ID not Hyper EVM mainnet");
 
         // Address of owner multi-sig wallet
         address ownerMultisig = 0xe26dA5cBf101bDA4028E2B3208c32424f5D09421;
 
-        // stHYPE
-        address token0 = 0xfFaa4a3D97fE9107Cef8a3F48c069F577Ff76cC1;
+        // kHYPE
+        address token0 = 0xfD739d4e423301CE9385c1fb8850539D657C296D;
         // WHYPE
         address token1 = 0x5555555555555555555555555555555555555555;
 
         // Valantis Protocol Factory
         address protocolFactory = 0x7E028ac56cB2AF75292F3D967978189698C24732;
 
-        stHYPEWithdrawalModule withdrawalModule = stHYPEWithdrawalModule(
-            payable(0x69e487aA3132708d08a979b2d07c5119Bb77F698)
+        kHYPEWithdrawalModule withdrawalModule = kHYPEWithdrawalModule(
+            payable(0xd939975c3b24f5Cc8F5cd794204378a5A34e55aa)
         );
 
         STEXAMM stex = STEXAMM(
-            payable(0x39694eFF3b02248929120c73F90347013Aec834d)
+            payable(0xbf747D2959F03332dbd25249dB6f00F62c6Cb526)
         );
         assertEq(stex.owner(), ownerMultisig);
 
@@ -42,19 +44,24 @@ contract LendingModuleProposalScript is Script, Test {
 
         console.log("STEX AMM: ", address(stex));
 
-        stHYPEWithdrawalModuleKeeper keeper = stHYPEWithdrawalModuleKeeper(
-            0x0Aef1eAAd539C16292faEB16D3F4AB5842F0aa6c
+        kHYPEWithdrawalModuleKeeper keeper = kHYPEWithdrawalModuleKeeper(
+            0x0A3495d86DbB7dB0f59c54747bc81C321C295e8c
         );
         assertEq(keeper.owner(), ownerMultisig);
 
-        stHYPEWithdrawalModuleManager manager = stHYPEWithdrawalModuleManager(
-            0x80c7f89398160fCD9E74519f63F437459E5d02E2
+        kHYPEWithdrawalModuleManager manager = kHYPEWithdrawalModuleManager(
+            0xE100cC3B7bCD133381B63351868705b224537765
         );
         assertEq(manager.owner(), ownerMultisig);
         assertEq(manager.keeper(), address(keeper));
 
-        AaveLendingModule lendingModule = AaveLendingModule(
-            0xf2CE1b504205557e9Ae700Ea480Ce2d633430be1
+        // HyperLend Lending Module
+        /*AaveLendingModule lendingModule = AaveLendingModule(
+            0x78b68763294B86d451958dc01c8E6b3057645F67
+        );*/
+        // Multi-market lending module
+        MultiMarketLendingModule lendingModule = MultiMarketLendingModule(
+            0xdFcAeD3ff2C15dd5d95B3191670F21E73f21c22F
         );
 
         // Simulate proposal
@@ -75,43 +82,36 @@ contract LendingModuleProposalScript is Script, Test {
             address(withdrawalModule.lendingModule()),
             address(lendingModule)
         );
-        vm.stopPrank();
+        vm.stopPrank();*/
 
         // Simulate lending module deposit
-        vm.startPrank(address(manager));
-        withdrawalModule.supplyToken1ToLendingPool(20_000 ether);
+        /*vm.startPrank(address(manager));
+        withdrawalModule.supplyToken1ToLendingPool(100 ether);
         console.log(
             "asset balance in lending protocol: ",
             lendingModule.assetBalance()
         );
-        vm.stopPrank();
+        vm.stopPrank();*/
 
         // Simulate lending module withdraw
-        vm.startPrank(address(manager));
-        (uint256 preReserve0, uint256 preReserve1) = pool.getReserves();
-        withdrawalModule.withdrawToken1FromLendingPool(
-            20_000 ether,
-            address(0)
-        );
+        /*vm.startPrank(address(manager));
+        withdrawalModule.withdrawToken1FromLendingPool(0.1 ether, address(0));
         console.log(
             "asset balance in lending protocol: ",
             lendingModule.assetBalance()
         );
-        (uint256 reserve0, uint256 reserve1) = pool.getReserves();
-        assertEq(reserve0, preReserve0);
-        assertGe(reserve1, preReserve1 + 20_000 ether);
         vm.stopPrank();*/
 
         // Generate payload for `proposeLendingModule`
         /*vm.startPrank(ownerMultisig);
 
         bytes memory payload = abi.encodeWithSelector(
-            stHYPEWithdrawalModule.proposeLendingModule.selector,
+            kHYPEWithdrawalModule.proposeLendingModule.selector,
             address(lendingModule),
             3 days
         );
         bytes memory managerPayload = abi.encodeWithSelector(
-            WithdrawalModuleManager.call.selector,
+            kHYPEWithdrawalModuleManager.call.selector,
             address(withdrawalModule),
             payload
         );
@@ -133,10 +133,10 @@ contract LendingModuleProposalScript is Script, Test {
         /*vm.startPrank(ownerMultisig);
 
         bytes memory payload = abi.encodeWithSelector(
-            stHYPEWithdrawalModule.setProposedLendingModule.selector
+            kHYPEWithdrawalModule.setProposedLendingModule.selector
         );
         bytes memory managerPayload = abi.encodeWithSelector(
-            WithdrawalModuleManager.call.selector,
+            kHYPEWithdrawalModuleManager.call.selector,
             address(withdrawalModule),
             payload
         );
@@ -149,8 +149,8 @@ contract LendingModuleProposalScript is Script, Test {
         assertEq(
             address(withdrawalModule.lendingModule()),
             address(lendingModule)
-        );*/
+        );
 
-        vm.stopPrank();
+        vm.stopPrank();*/
     }
 }

@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
-import {AaveLendingModule} from "src/AaveLendingModule.sol";
+import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
 
 contract AaveLendingModuleTest is Test {

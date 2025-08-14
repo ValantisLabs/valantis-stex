@@ -17,21 +17,22 @@ import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {STEXAMM} from "src/STEXAMM.sol";
 import {STEXLens} from "src/STEXLens.sol";
-import {STEXRatioSwapFeeModule} from "src/STEXRatioSwapFeeModule.sol";
-import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
-import {MockOverseer} from "src/mocks/MockOverseer.sol";
-import {MockStHype} from "src/mocks/MockStHype.sol";
+import {STEXRatioSwapFeeModule} from "src/swap-fee-modules/STEXRatioSwapFeeModule.sol";
+import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
+import {MockOverseer} from "src/mocks/sthype/MockOverseer.sol";
+import {MockStHype} from "src/mocks/sthype/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
-import {AaveLendingModule} from "src/AaveLendingModule.sol";
+import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
 import {FeeParams} from "src/structs/STEXRatioSwapFeeModuleStructs.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
-contract STEXAMMTest is Test {
+contract stHYPESTEXAMMTest is Test {
     STEXAMM stex;
     STEXLens stexLens;
 
     STEXRatioSwapFeeModule swapFeeModule;
+
     stHYPEWithdrawalModule withdrawalModule;
 
     DepositWrapper nativeWrapper;
@@ -51,6 +52,8 @@ contract STEXAMMTest is Test {
 
     address public owner = makeAddr("OWNER");
 
+    address public wstHYPE = makeAddr("WSTHYPE");
+
     ISovereignPool pool;
 
     function setUp() public {
@@ -68,7 +71,7 @@ contract STEXAMMTest is Test {
 
         lendingPool = new MockLendingPool(address(weth));
 
-        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), address(this));
+        withdrawalModule = new stHYPEWithdrawalModule(address(overseer), wstHYPE, address(this));
 
         swapFeeModule = new STEXRatioSwapFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
@@ -136,8 +139,10 @@ contract STEXAMMTest is Test {
     }
 
     function testDeploy() public {
-        stHYPEWithdrawalModule withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
+        stHYPEWithdrawalModule withdrawalModuleDeployment =
+            new stHYPEWithdrawalModule(address(overseer), wstHYPE, address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
+        assertEq(withdrawalModuleDeployment.wstHYPE(), wstHYPE);
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
@@ -593,6 +598,9 @@ contract STEXAMMTest is Test {
         testDeposit();
 
         address recipient = makeAddr("NATIVE_TOKEN_RECIPIENT");
+
+        uint256 snapshot = vm.snapshotState();
+
         uint256 shares = nativeWrapper.depositFromNative(0, block.timestamp, recipient);
         // No native token has been sent
         assertEq(shares, 0);
@@ -604,6 +612,22 @@ contract STEXAMMTest is Test {
         assertEq(weth.allowance(address(nativeWrapper), address(stex)), 0);
         assertEq(stex.balanceOf(recipient), shares);
         (uint256 postReserve0, uint256 postReserve1) = pool.getReserves();
+        assertEq(preReserve0, postReserve0);
+        assertEq(preReserve1 + amount, postReserve1);
+
+        vm.revertToState(snapshot);
+
+        shares = nativeWrapper.depositFromNativeWithCode(0, block.timestamp, recipient, keccak256("valantis"));
+        // No native token has been sent
+        assertEq(shares, 0);
+
+        amount = 2 ether;
+        (preReserve0, preReserve1) = pool.getReserves();
+        shares = nativeWrapper.depositFromNative{value: amount}(0, block.timestamp, recipient);
+        assertGt(shares, 0);
+        assertEq(weth.allowance(address(nativeWrapper), address(stex)), 0);
+        assertEq(stex.balanceOf(recipient), shares);
+        (postReserve0, postReserve1) = pool.getReserves();
         assertEq(preReserve0, postReserve0);
         assertEq(preReserve1 + amount, postReserve1);
     }
@@ -636,8 +660,20 @@ contract STEXAMMTest is Test {
         (uint256 amountToken1Min, uint256 minShares) =
             stexLens.getMinAmountsForToken0Deposit(address(stex), amountToken0, 0, 0);
 
+        uint256 snapshot = vm.snapshotState();
+
         uint256 shares =
             nativeWrapper.depositFromToken0(amountToken0, amountToken1Min, minShares, block.timestamp, recipient);
+        assertEq(token0.balanceOf(address(nativeWrapper)), 0);
+        assertEq(weth.balanceOf(address(nativeWrapper)), 0);
+        assertEq(stex.balanceOf(recipient), minShares);
+        assertEq(stex.balanceOf(recipient), shares);
+
+        vm.revertToState(snapshot);
+
+        shares = nativeWrapper.depositFromToken0WithCode(
+            amountToken0, amountToken1Min, minShares, block.timestamp, recipient, keccak256("valantis")
+        );
         assertEq(token0.balanceOf(address(nativeWrapper)), 0);
         assertEq(weth.balanceOf(address(nativeWrapper)), 0);
         assertEq(stex.balanceOf(recipient), minShares);
@@ -812,7 +848,7 @@ contract STEXAMMTest is Test {
         assertEq(amountToken1, 0);
         assertEq(cumulativeAmount, 0);
 
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_alreadyClaimed.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_AlreadyClaimed.selector);
         withdrawalModule.claim(0);
     }
 

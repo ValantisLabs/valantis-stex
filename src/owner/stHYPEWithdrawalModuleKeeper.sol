@@ -3,22 +3,22 @@ pragma solidity ^0.8.25;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {IOverseer} from "../interfaces/IOverseer.sol";
+import {IOverseer} from "../interfaces/sthype/IOverseer.sol";
 import {IWithdrawalModule} from "../interfaces/IWithdrawalModule.sol";
 
 /**
- * @notice Keeper contract to automate routine function calls in Withdrawal Module.
- * @dev This contract is supposed to route its calls via the `owner` of Withdrawal Module.
+ * @notice Keeper contract to automate routine function calls in `stHYPEWithdrawalModule`.
+ * @dev This contract is supposed to route its calls via the `owner` of `stHYPEWithdrawalModule`.
  */
-contract WithdrawalModuleKeeper is Ownable {
+contract stHYPEWithdrawalModuleKeeper is Ownable {
     /**
      *
      *  CUSTOM ERRORS
      *
      */
-    error WithdrawalModuleKeeper__ZeroAddress();
-    error WithdrawalModuleKeeper__call_onlyKeeper();
-    error WithdrawalModuleKeeper__call_callFailed();
+    error stHYPEWithdrawalModuleKeeper__ZeroAddress();
+    error stHYPEWithdrawalModuleKeeper__call_onlyKeeper();
+    error stHYPEWithdrawalModuleKeeper__call_callFailed();
 
     /**
      *
@@ -65,7 +65,9 @@ contract WithdrawalModuleKeeper is Ownable {
      * @param _keeper Address to grant the keeper role to.
      */
     function setKeeper(address _keeper) external onlyOwner {
-        if (_keeper == address(0)) revert WithdrawalModuleKeeper__ZeroAddress();
+        if (_keeper == address(0)) {
+            revert stHYPEWithdrawalModuleKeeper__ZeroAddress();
+        }
         isKeeper[_keeper] = true;
     }
 
@@ -75,30 +77,33 @@ contract WithdrawalModuleKeeper is Ownable {
      * @param _keeper Address to revoke the keeper role from.
      */
     function removeKeeper(address _keeper) external onlyOwner {
-        if (_keeper == address(0)) revert WithdrawalModuleKeeper__ZeroAddress();
+        if (_keeper == address(0)) {
+            revert stHYPEWithdrawalModuleKeeper__ZeroAddress();
+        }
         isKeeper[_keeper] = false;
     }
 
     /**
      * @notice Allows an address with keeper role to execute an arbitrary external call.
      * @dev Only callable by an address with keeper role.
-     * @param _withdrawalModuleManager Address of Withdrawal Module's owner, which should validate this call.
+     * @param _withdrawalModuleManager Address of `stHYPEWithdrawalModule`'s owner,
+     *        which should validate this call.
      * @param _payload Payload to execute.
      */
     function call(address _withdrawalModuleManager, bytes calldata _payload) external {
         if (!isKeeper[msg.sender]) {
-            revert WithdrawalModuleKeeper__call_onlyKeeper();
+            revert stHYPEWithdrawalModuleKeeper__call_onlyKeeper();
         }
 
         (bool success,) = _withdrawalModuleManager.call(_payload);
-        if (!success) revert WithdrawalModuleKeeper__call_callFailed();
+        if (!success) revert stHYPEWithdrawalModuleKeeper__call_callFailed();
     }
 
     /**
      * @notice Allows anyone to claim an array of LST protocol withdrawals and call Withdrawal Module's update function.
      * @param _burnIds Ids of LST protocol withdrawals in `_overseer` to claim.
      * @param _overseer Address of LST protocol's withdrawal queue entrypoint.
-     * @param _withdrawalModule Address of STEX Withdrawal Module.
+     * @param _withdrawalModule Address of `stHYPEWithdrawalModule`.
      * @dev Returns a boolean array of same size as `_burnIds` to flag the ones which have been successfully claimed.
      */
     function redeemBurnsAndUpdate(uint256[] calldata _burnIds, address _overseer, address _withdrawalModule)

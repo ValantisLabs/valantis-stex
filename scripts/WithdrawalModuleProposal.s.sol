@@ -7,9 +7,9 @@ import {Test} from "forge-std/Test.sol";
 import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
 
 import {STEXAMM} from "src/STEXAMM.sol";
-import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
-import {WithdrawalModuleManager} from "src/owner/WithdrawalModuleManager.sol";
-import {WithdrawalModuleKeeper} from "src/owner/WithdrawalModuleKeeper.sol";
+import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
+import {stHYPEWithdrawalModuleManager} from "src/owner/stHYPEWithdrawalModuleManager.sol";
+import {stHYPEWithdrawalModuleKeeper} from "src/owner/stHYPEWithdrawalModuleKeeper.sol";
 
 contract WithdrawalModuleProposalScript is Script, Test {
     function run() external {
@@ -113,12 +113,12 @@ contract WithdrawalModuleProposalScript is Script, Test {
 
         vm.stopPrank();
 
-        WithdrawalModuleKeeper keeper = WithdrawalModuleKeeper(
+        stHYPEWithdrawalModuleKeeper keeper = stHYPEWithdrawalModuleKeeper(
             0x0Aef1eAAd539C16292faEB16D3F4AB5842F0aa6c
         );
         assertEq(keeper.owner(), ownerMultisig);
 
-        WithdrawalModuleManager manager = WithdrawalModuleManager(
+        stHYPEWithdrawalModuleManager manager = stHYPEWithdrawalModuleManager(
             0x80c7f89398160fCD9E74519f63F437459E5d02E2
         );
         assertEq(manager.owner(), ownerMultisig);
@@ -140,12 +140,12 @@ contract WithdrawalModuleProposalScript is Script, Test {
             communityCode
         );
         bytes memory managerPayload = abi.encodeWithSelector(
-            WithdrawalModuleManager.call.selector,
+            stHYPEWithdrawalModuleManager.call.selector,
             address(withdrawalModule),
             payloadStakeToken1
         );
         console.log(
-            "payload to withdrawalModule manager for withdrawalModule.stakeToken1: "
+            "payload to stHYPEWithdrawalModule manager for stHYPEWithdrawalModule.stakeToken1: "
         );
         console.logBytes(managerPayload);
 

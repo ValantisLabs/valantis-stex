@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/kHYPERebalanceModuleDeploy.s.sol:kHYPERebalanceModuleDeployScript --rpc-url $RPC_URL

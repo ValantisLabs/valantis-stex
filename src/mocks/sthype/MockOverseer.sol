@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {IOverseer} from "../interfaces/IOverseer.sol";
+import {IOverseer} from "../../interfaces/sthype/IOverseer.sol";
 
 import {MockStHype} from "./MockStHype.sol";
 

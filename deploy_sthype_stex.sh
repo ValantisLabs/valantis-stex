@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/stHYPESTEXDeploy.s.sol:stHYPESTEXDeployScript --rpc-url $RPC_URL

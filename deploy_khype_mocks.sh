@@ -1,0 +1,1 @@
+eval $(grep '^RPC_URL' .env) && forge script scripts/kHYPEMocksDeploy.s.sol:kHYPEMocksDeployScript --rpc-url $RPC_URL

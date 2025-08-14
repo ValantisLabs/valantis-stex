@@ -32,8 +32,8 @@ contract STEXLens {
      *  CONSTANTS
      *
      */
-    uint256 private constant MINIMUM_LIQUIDITY = 1e3;
-    uint256 private constant BIPS = 1e4;
+    uint256 private constant MINIMUM_LIQUIDITY = 1_000;
+    uint256 private constant BIPS = 10_000;
 
     /**
      *
@@ -61,6 +61,56 @@ contract STEXLens {
         reserve1Lending = withdrawalModule.amountToken1LendingPool();
 
         amount1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+    }
+
+    /**
+     * @notice Calculates total value of STEX AMM's LP token, in token1.
+     * @dev Once this is calculated, an exchange rate can be derived by dividing
+     *      `totalValueToken1` by the LP token's `totalSupply`.
+     * @param stex Address of STEX AMM deployment to query for.
+     * @return totalValueToken1 Total value of STEX AMM's LP token,
+     *         denominated in token1 (wrapped native token).
+     */
+    function getTotalValueToken1(address stex) external view returns (uint256 totalValueToken1) {
+        ISTEXAMM stexAmm = ISTEXAMM(stex);
+
+        ISovereignPool pool = ISovereignPool(stexAmm.pool());
+        IWithdrawalModule withdrawalModule = IWithdrawalModule(stexAmm.withdrawalModule());
+        require(!pool.isLocked(), "Sovereign Pool reentrancy guard active");
+        require(!stexAmm.isLocked(), "STEX AMM reentrancy guard active");
+        require(!withdrawalModule.isLocked(), "Withdrawal Module reentrancy guard active");
+
+        (uint256 reserve0Pool, uint256 reserve1Pool) = pool.getReserves();
+        uint256 reserve1Lending = withdrawalModule.amountToken1LendingPool();
+        // This value already acounts for the effect of calling `withdrawalModule::update()`
+        uint256 amountToken0PendingUnstaking = withdrawalModule.amountToken0PendingUnstaking();
+        // This value already acounts for the effect of calling `withdrawalModule::update()`
+        uint256 amountToken1PendingLPWithdrawal = withdrawalModule.amountToken1PendingLPWithdrawal();
+
+        uint256 withdrawalModuleBalance = address(withdrawalModule).balance;
+        uint256 amountToken1ClaimableLPWithdrawal = withdrawalModule.amountToken1ClaimableLPWithdrawal();
+        uint256 withdrawalModuleExcessBalance = withdrawalModuleBalance > amountToken1ClaimableLPWithdrawal
+            ? withdrawalModuleBalance - amountToken1ClaimableLPWithdrawal
+            : 0;
+
+        // If this is true, a call to `withdrawalModule::update()`
+        // needs to be made to account for the newly received native token balance fully.
+        if (withdrawalModuleExcessBalance > 0) {
+            uint256 amountToken1PendingLPWithdrawalBeforeUpdate =
+                withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
+
+            // Add extra balance to `reserve1Pool`,
+            // to be transferred after `withdrawalModule::update()` is called
+            if (withdrawalModuleExcessBalance > amountToken1PendingLPWithdrawalBeforeUpdate) {
+                uint256 amountToken1Surplus =
+                    withdrawalModuleExcessBalance - amountToken1PendingLPWithdrawalBeforeUpdate;
+                reserve1Pool += amountToken1Surplus;
+            }
+        }
+
+        totalValueToken1 = reserve1Pool + reserve1Lending
+            + withdrawalModule.convertToToken1(reserve0Pool + amountToken0PendingUnstaking)
+            - amountToken1PendingLPWithdrawal;
     }
 
     function getSharesForDeposit(address stex, uint256 amount) external view returns (uint256) {
@@ -183,7 +233,7 @@ contract STEXLens {
             return false;
         }
 
-        // Check if there is enough ETH available to fulfill this request
+        // Check if there is enough native token available to fulfill this request
         if (withdrawalModule.amountToken1ClaimableLPWithdrawal() < request.amountToken1) {
             return false;
         }

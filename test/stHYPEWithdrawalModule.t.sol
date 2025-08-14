@@ -5,12 +5,14 @@ import {Test} from "forge-std/Test.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {stHYPEWithdrawalModule} from "src/stHYPEWithdrawalModule.sol";
+import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+
+import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
-import {MockOverseer} from "src/mocks/MockOverseer.sol";
-import {MockStHype} from "src/mocks/MockStHype.sol";
+import {MockOverseer} from "src/mocks/sthype/MockOverseer.sol";
+import {MockStHype} from "src/mocks/sthype/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
-import {AaveLendingModule} from "src/AaveLendingModule.sol";
+import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 import {STEXLens} from "src/STEXLens.sol";
 
@@ -43,6 +45,8 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     address public owner = makeAddr("OWNER");
 
+    address public wstHYPE = makeAddr("WSTHYPE");
+
     function setUp() public {
         stexLens = new STEXLens();
 
@@ -57,7 +61,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(lendingPool.underlyingAsset(), address(weth));
         assertEq(lendingPool.lendingPoolYieldToken(), address(lendingPool));
 
-        _withdrawalModule = new stHYPEWithdrawalModule(address(overseer), owner);
+        _withdrawalModule = new stHYPEWithdrawalModule(address(overseer), wstHYPE, owner);
 
         vm.startPrank(owner);
         // AMM will be mocked to make testing more flexible
@@ -127,13 +131,17 @@ contract stHYPEWithdrawalModuleTest is Test {
 
     function testDeploy() public returns (stHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
-        new stHYPEWithdrawalModule(address(0), address(this));
+        new stHYPEWithdrawalModule(address(0), wstHYPE, address(this));
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
+        new stHYPEWithdrawalModule(address(overseer), address(0), address(this));
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new stHYPEWithdrawalModule(address(overseer), address(0));
+        new stHYPEWithdrawalModule(address(overseer), wstHYPE, address(0));
 
-        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), address(this));
+        withdrawalModuleDeployment = new stHYPEWithdrawalModule(address(overseer), wstHYPE, address(this));
         assertEq(withdrawalModuleDeployment.overseer(), address(overseer));
+        assertEq(withdrawalModuleDeployment.wstHYPE(), wstHYPE);
         assertEq(withdrawalModuleDeployment.owner(), address(this));
         assertEq(address(withdrawalModuleDeployment.lendingModule()), address(0));
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
@@ -152,6 +160,38 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         assertEq(_withdrawalModule.token0SharesOf(recipient), shares);
         assertEq(_withdrawalModule.token0SharesToBalance(shares), amount0);
+    }
+
+    function testSweep() public {
+        ERC20Mock mockToken = new ERC20Mock();
+        address recipient = makeAddr("MOCK_RECIPIENT");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.sweep(address(mockToken), recipient);
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
+        _withdrawalModule.sweep(address(0), recipient);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__ZeroAddress.selector);
+        _withdrawalModule.sweep(address(mockToken), address(0));
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__sweep_Token0CannotBeSweeped.selector);
+        _withdrawalModule.sweep(address(_token0), recipient);
+
+        // wstHYPE is the same as token0
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__sweep_Token0CannotBeSweeped.selector);
+        _withdrawalModule.sweep(wstHYPE, recipient);
+
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__sweep_Token1CannotBeSweeped.selector);
+        _withdrawalModule.sweep(address(weth), recipient);
+
+        mockToken.mint(address(_withdrawalModule), 10 ether);
+        _withdrawalModule.sweep(address(mockToken), recipient);
+        assertEq(mockToken.balanceOf(recipient), 10 ether);
+
+        vm.stopPrank();
     }
 
     function testStakeAmount1() public {
@@ -282,7 +322,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.expectRevert(
             stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__withdrawToken1FromLendingPool_insufficientAmountWithdrawn
+                .stHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn
                 .selector
         );
         _withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
@@ -353,7 +393,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         assertEq(weth.balanceOf(_pool), 0);
 
         // Cannot claim withdrawal request because there is not enough ETH available
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_insufficientAmountToClaim.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_InsufficientAmountToClaim.selector);
         _withdrawalModule.claim(0);
 
         vm.revertToState(snapshot);
@@ -431,7 +471,7 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         // User 3 cannot claim, because it requested withdrawal after the call to `update`
         assertFalse(stexLens.canClaim(address(this), 2));
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_cannotYetClaim.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_CannotYetClaim.selector);
         _withdrawalModule.claim(2);
 
         // User 2 can claim, similar scenario to user 1
@@ -474,7 +514,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         _withdrawalModule.update();
 
         // user2 tries to claim, but cannot because of queue priority
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_cannotYetClaim.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule__claim_CannotYetClaim.selector);
         _withdrawalModule.claim(1);
 
         // user1 can claim
@@ -503,16 +543,25 @@ contract stHYPEWithdrawalModuleTest is Test {
 
         vm.stopPrank();
 
-        address lendingModuleMock = makeAddr("MOCK_LENDING_MODULE");
+        address lendingModuleMock = address(
+            new AaveLendingModule(
+                address(lendingPool),
+                lendingPool.lendingPoolYieldToken(),
+                address(weth),
+                address(_withdrawalModule),
+                address(0x123),
+                2
+            )
+        );
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         _withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
 
         vm.startPrank(owner);
 
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooLow.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooLow.selector);
         _withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days - 1);
-        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_timelockTooHigh.selector);
+        vm.expectRevert(stHYPEWithdrawalModule.stHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooHigh.selector);
         _withdrawalModule.proposeLendingModule(lendingModuleMock, 7 days + 1);
 
         _withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
