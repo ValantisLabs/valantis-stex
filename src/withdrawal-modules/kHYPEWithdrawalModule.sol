@@ -41,6 +41,11 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
     event LendingModuleSet(address lendingModule);
     event AmountToken1Staked(uint256 amount);
     event AmountToken0Unstaked(uint256 amount);
+    event ExcessToken0Unstaked(uint256 amount);
+    event AmountToken0PendingUnstakingOffsetSet(uint256 amountToken0PendingUnstakingOffset);
+    event BurnFeeBipsProposed(uint256 burnFeeBips, uint256 startTimestamp);
+    event BurnFeeBipsProposalCancelled();
+    event BurnFeeBipsSet(uint256 burnFeeBips);
     event AmountSuppliedToLendingModule(uint256 amount);
     event AmountWithdrawnFromLendingModule(uint256 amount);
     event Update();
@@ -68,10 +73,17 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
     error kHYPEWithdrawalModule__rebalanceToken0Reserves_RebalanceModuleCallFailed();
     error kHYPEWithdrawalModule__setProposedLendingModule_InactiveProposal();
     error kHYPEWithdrawalModule__setProposedLendingModule_ProposalNotActive();
+    error kHYPEWithdrawalModule__setBurnFeeBips_FeeTooHigh();
+    error kHYPEWithdrawalModule__proposeBurnFeeBips_ProposalAlreadyActive();
+    error kHYPEWithdrawalModule__setProposedBurnFeeBips_InactiveProposal();
+    error kHYPEWithdrawalModule__setProposedBurnFeeBips_ProposalNotActive();
     error kHYPEWithdrawalModule__setSTEX_AlreadySet();
     error kHYPEWithdrawalModule__sweep_Token0CannotBeSweeped();
     error kHYPEWithdrawalModule__sweep_Token1CannotBeSweeped();
+    error kHYPEWithdrawalModule__pendingUnstakeRequestIdAt_IndexOutOfBounds();
+    error kHYPEWithdrawalModule__unstakeToken0Reserves_MaxPendingRequestsReached();
     error kHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn();
+    error kHYPEWithdrawalModule__setAmountToken0PendingUnstakingOffset_OffsetTooHigh();
     error kHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooLow();
     error kHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooHigh();
 
@@ -81,6 +93,8 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      *
      */
     uint256 private constant BIPS = 10_000;
+    uint256 private constant MAX_BURN_FEE_BIPS = 100;
+    uint256 private constant MAX_PENDING_UNSTAKE_REQUESTS = 5;
 
     uint256 private constant MIN_TIMELOCK_DELAY = 3 days;
     uint256 private constant MAX_TIMELOCK_DELAY = 7 days;
@@ -100,6 +114,11 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      * @notice Staking Manager contract from Kinetiq Liquid Staking Protocol.
      */
     address public immutable stakingManager;
+
+    /**
+     * @notice Immutable per-deployment upper bound for owner-controlled pending-unstake correction offset.
+     */
+    uint256 public immutable MAX_AMOUNT_TOKEN0_PENDING_UNSTAKING_OFFSET;
 
     /**
      *
@@ -162,23 +181,72 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
     uint256 private _amountToken0PendingUnstaking;
 
     /**
+     * @notice Owner-controlled correction offset added on top of `_amountToken0PendingUnstaking` getters.
+     * @dev This is a display/accounting correction for integrations and does not affect queue accounting.
+     */
+    uint256 private _amountToken0PendingUnstakingOffset;
+
+    /**
+     * @notice Queue of active `stakingManager` withdrawal request IDs.
+     * @dev Kept small and bounded to preserve deterministic gas in `update`.
+     * @dev This array is unordered, in order to avoid re-ordering the array when removing an item.
+     */
+    uint256[MAX_PENDING_UNSTAKE_REQUESTS] private _pendingUnstakeRequestIds;
+
+    /**
+     * @notice Number of active entries in `_pendingUnstakeRequestIds`.
+     */
+    uint256 private _pendingUnstakeRequestCount;
+
+    /**
      * @notice Amount of native `token1` which is owed to STEX AMM LPs who have burnt their LP tokens.
      * @dev This might get updated after calling to `update`.
      */
     uint256 private _amountToken1PendingLPWithdrawal;
 
     /**
+     * @notice Pending proposal to update `burnFeeBips`.
+     */
+    struct BurnFeeBipsProposal {
+        uint256 burnFeeBips;
+        uint256 startTimestamp;
+    }
+
+    /**
+     * @notice Minimum fee charged on `burnToken0AfterWithdraw`, in bips.
+     * @dev Acts as a conservative floor when protocol unstake fee is unexpectedly low.
+     */
+    uint256 public burnFeeBips;
+
+    /**
+     * @notice Pending proposal to update `burnFeeBips`.
+     */
+    BurnFeeBipsProposal public burnFeeBipsProposal;
+
+    /**
+     * @notice Portion of `_amountToken1PendingLPWithdrawal` already covered by queued unstaking requests.
+     * @dev Tracked in native `token1` units (post-unstake-fee expected amount).
+     */
+    uint256 private _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake;
+
+    /**
      *
      *  CONSTRUCTOR
      *
      */
-    constructor(address _stakingAccountant, address _stakingManager, address _owner) Ownable(_owner) {
+    constructor(
+        address _stakingAccountant,
+        address _stakingManager,
+        address _owner,
+        uint256 _maxAmountToken0PendingUnstakingOffset
+    ) Ownable(_owner) {
         if (_stakingAccountant == address(0) || _stakingManager == address(0) || _owner == address(0)) {
             revert kHYPEWithdrawalModule__ZeroAddress();
         }
 
         stakingAccountant = _stakingAccountant;
         stakingManager = _stakingManager;
+        MAX_AMOUNT_TOKEN0_PENDING_UNSTAKING_OFFSET = _maxAmountToken0PendingUnstakingOffset;
     }
 
     /**
@@ -259,20 +327,14 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
 
     /**
      * @notice Tracks amount of token0 which is pending unstaking through `stakingManager`.
-     * @dev This needs to be tracked as a function of surplus native token balance in this contract,
-     *      in order to maintain consistent accounting before `update` gets called
-     *      and unaccounted native token balance gets transferred.
+     * @dev This value is decremented when a withdrawal request gets confirmed,
+     *      either via `confirmWithdrawal()` or automatically in `update()`,
+     *      using the request's queued `kHYPEAmount` (post-unstake-fee token0 shares),
+     *      so it is independent from current exchange-rate conversions.
+     * @dev Includes owner-controlled `_amountToken0PendingUnstakingOffset`.
      */
     function amountToken0PendingUnstaking() public view override returns (uint256) {
-        uint256 excessToken1 = _getExcessNativeBalance();
-        uint256 excessToken0 = convertToToken0(excessToken1);
-
-        uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
-        if (amountToken0PendingUnstakingCache > excessToken0) {
-            return amountToken0PendingUnstakingCache - excessToken0;
-        } else {
-            return 0;
-        }
+        return _amountToken0PendingUnstaking + _amountToken0PendingUnstakingOffset;
     }
 
     /**
@@ -280,7 +342,33 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      *         but returns the value in storage prior to calling `update`.
      */
     function amountToken0PendingUnstakingBeforeUpdate() external view override returns (uint256) {
-        return _amountToken0PendingUnstaking;
+        return _amountToken0PendingUnstaking + _amountToken0PendingUnstakingOffset;
+    }
+
+    /**
+     * @notice Returns owner-controlled offset added to token0 pending-unstake getters.
+     */
+    function amountToken0PendingUnstakingOffset() external view returns (uint256) {
+        return _amountToken0PendingUnstakingOffset;
+    }
+
+    /**
+     * @notice Number of active unstake requests tracked by this module.
+     */
+    function pendingUnstakeRequestCount() external view returns (uint256) {
+        return _pendingUnstakeRequestCount;
+    }
+
+    /**
+     * @notice Returns tracked unstake request ID at `_index`.
+     * @dev IDs are stored in an unordered set-like array.
+     */
+    function pendingUnstakeRequestIdAt(uint256 _index) external view returns (uint256) {
+        if (_index >= _pendingUnstakeRequestCount) {
+            revert kHYPEWithdrawalModule__pendingUnstakeRequestIdAt_IndexOutOfBounds();
+        }
+
+        return _pendingUnstakeRequestIds[_index];
     }
 
     /**
@@ -293,7 +381,36 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
 
         uint256 amountToken1PendingLPWithdrawalCache = _amountToken1PendingLPWithdrawal;
         if (amountToken1PendingLPWithdrawalCache > excessNativeBalance) {
-            return amountToken1PendingLPWithdrawalCache - excessNativeBalance;
+            uint256 pendingToken1Net = amountToken1PendingLPWithdrawalCache - excessNativeBalance;
+            uint256 pendingToken1CoveredByQueuedUnstake =
+                Math.min(_amountToken1PendingLPWithdrawalCoveredByQueuedUnstake, pendingToken1Net);
+            uint256 pendingToken1Uncovered = pendingToken1Net - pendingToken1CoveredByQueuedUnstake;
+
+            // LP liabilities are tracked as token1 net amount expected by LPs.
+            // The uncovered portion still requires unstaking token0 reserves,
+            // so STEX must reserve token0 pre-unstake-fee amount for it.
+            if (pendingToken1Uncovered > 0) {
+                uint256 feeToken0Bips = IStakingManager(stakingManager).unstakeFeeRate();
+                // WARNING: kHYPE unstake fee should always be less than 100%,
+                // but if it is not, we cap it at to avoid division by zero.
+                feeToken0Bips = Math.min(feeToken0Bips, BIPS - 1);
+                pendingToken1Uncovered =
+                    Math.mulDiv(pendingToken1Uncovered, BIPS, BIPS - feeToken0Bips, Math.Rounding.Ceil);
+            }
+
+            uint256 pendingToken1 = pendingToken1CoveredByQueuedUnstake + pendingToken1Uncovered;
+
+            // STEXAMM reserves pending token1 liabilities by converting this value
+            // to token0 with rounding down. If `pendingToken1` is not exactly
+            // representable in token0 shares, we add a tiny buffer so that the
+            // conversion is conservative and cannot be under-reserved.
+            uint256 pendingToken0Floor = convertToToken0(pendingToken1);
+            if (convertToToken1(pendingToken0Floor) < pendingToken1) {
+                uint256 token1PerToken0Share = convertToToken1(1);
+                pendingToken1 += token1PerToken0Share + 1;
+            }
+
+            return pendingToken1;
         } else {
             return 0;
         }
@@ -305,6 +422,13 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      */
     function amountToken1PendingLPWithdrawalBeforeUpdate() external view override returns (uint256) {
         return _amountToken1PendingLPWithdrawal;
+    }
+
+    /**
+     * @notice Returns pending LP withdrawal amount already covered by queued unstake requests.
+     */
+    function amountToken1PendingLPWithdrawalCoveredByQueuedUnstake() external view returns (uint256) {
+        return _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake;
     }
 
     /**
@@ -341,6 +465,74 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
         pool = ISTEXAMM(_stex).pool();
 
         emit STEXSet(_stex);
+    }
+
+    /**
+     * @notice Sets owner-controlled correction offset for token0 pending-unstake getters.
+     * @dev Only callable by `owner`.
+     * @dev This does not affect internal pending-unstake accounting.
+     * @param _offset New offset value.
+     */
+    function setAmountToken0PendingUnstakingOffset(uint256 _offset) external onlyOwner {
+        if (_offset > MAX_AMOUNT_TOKEN0_PENDING_UNSTAKING_OFFSET) {
+            revert kHYPEWithdrawalModule__setAmountToken0PendingUnstakingOffset_OffsetTooHigh();
+        }
+
+        _amountToken0PendingUnstakingOffset = _offset;
+
+        emit AmountToken0PendingUnstakingOffsetSet(_offset);
+    }
+
+    /**
+     * @notice Proposes a new `burnFeeBips` value under timelock.
+     * @dev Only callable by `owner`.
+     * @param _burnFeeBips Fee in bips, capped to 1%.
+     * @param _timelockDelay 3-7 days timelock delay.
+     */
+    function proposeBurnFeeBips(uint256 _burnFeeBips, uint256 _timelockDelay) external onlyOwner {
+        if (_burnFeeBips > MAX_BURN_FEE_BIPS) {
+            revert kHYPEWithdrawalModule__setBurnFeeBips_FeeTooHigh();
+        }
+        _verifyTimelockDelay(_timelockDelay);
+
+        if (burnFeeBipsProposal.startTimestamp > 0) {
+            revert kHYPEWithdrawalModule__proposeBurnFeeBips_ProposalAlreadyActive();
+        }
+
+        burnFeeBipsProposal =
+            BurnFeeBipsProposal({burnFeeBips: _burnFeeBips, startTimestamp: block.timestamp + _timelockDelay});
+
+        emit BurnFeeBipsProposed(_burnFeeBips, block.timestamp + _timelockDelay);
+    }
+
+    /**
+     * @notice Cancels a pending `burnFeeBips` proposal.
+     * @dev Only callable by `owner`.
+     */
+    function cancelBurnFeeBipsProposal() external onlyOwner {
+        emit BurnFeeBipsProposalCancelled();
+
+        delete burnFeeBipsProposal;
+    }
+
+    /**
+     * @notice Executes a pending `burnFeeBips` proposal after timelock.
+     * @dev Only callable by `owner`.
+     */
+    function setProposedBurnFeeBips() external onlyOwner {
+        if (burnFeeBipsProposal.startTimestamp > block.timestamp) {
+            revert kHYPEWithdrawalModule__setProposedBurnFeeBips_ProposalNotActive();
+        }
+
+        if (burnFeeBipsProposal.startTimestamp == 0) {
+            revert kHYPEWithdrawalModule__setProposedBurnFeeBips_InactiveProposal();
+        }
+
+        burnFeeBips = burnFeeBipsProposal.burnFeeBips;
+
+        delete burnFeeBipsProposal;
+
+        emit BurnFeeBipsSet(burnFeeBips);
     }
 
     /**
@@ -455,10 +647,14 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
     {
         IStakingManager stakingManagerInterface = IStakingManager(stakingManager);
 
-        uint256 feeToken0Bips = stakingManagerInterface.unstakeFeeRate();
-
         // `stakingManager` charges an unstaking fee in token0
-        uint256 feeToken0 = Math.mulDiv(_amountToken0, feeToken0Bips, BIPS);
+        uint256 unstakeFeeToken0Bips = stakingManagerInterface.unstakeFeeRate();
+        unstakeFeeToken0Bips = Math.min(unstakeFeeToken0Bips, BIPS - 1);
+
+        // Fee is the maximum of the unstaking fee and the burn fee
+        uint256 feeToken0Bips = Math.max(unstakeFeeToken0Bips, burnFeeBips);
+
+        uint256 feeToken0 = Math.mulDiv(_amountToken0, feeToken0Bips, BIPS, Math.Rounding.Ceil);
 
         // Amount of token1 which the LP expects to receive after unstaking,
         // excluding token0 fee and assuming no slashing
@@ -553,8 +749,12 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
     {
         if (_amountToken1 == 0) return;
 
+        // Ensure finalized unstake requests are confirmed first,
+        // so all available native token balance is accounted before drawing from pool reserves.
+        _syncPendingUnstakeRequests(true);
+
         // Ensure that net new native token balance is properly accounted for
-        _update(false);
+        _update();
 
         ISTEXAMM(stex).supplyToken1Reserves(_amountToken1);
 
@@ -563,7 +763,7 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
 
         // Use native token balance to net against pending LP withdrawals,
         // and transfer left-over amount as token1 back into pool
-        _update(true);
+        _update();
     }
 
     /**
@@ -674,6 +874,15 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      * @notice Unstakes left-over token0 balance in this contract.
      * @dev This can happen in case of token0 donations, or Kinetiq withdrawal cancellations.
      * @dev Only callable by `owner`.
+     * @dev This function intentionally does NOT increment `_amountToken0PendingUnstaking`
+     *      nor track the new request ID.
+     *      In the cancellation case, `_amountToken0PendingUnstaking` is already stale-but-accurate:
+     *      it still reflects the original queued amount, which is backed by the kHYPE tokens
+     *      returned to this contract. The STEX AMM TVL remains correct throughout because
+     *      `_amountToken0PendingUnstaking` represents real token0 value in the system
+     *      regardless of whether that value sits in the StakingManager queue or in this contract.
+     *      Once the new request is confirmed via `confirmWithdrawal(newId)`,
+     *      `_decreaseAmountToken0PendingUnstaking` reconciles the tracker.
      */
     function unstakeExcessToken0() external nonReentrant onlyOwner {
         ERC20 token0 = _getToken(true);
@@ -682,19 +891,21 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
         if (token0Balance == 0) return;
 
         _unstakeToken0(token0Balance);
+        emit ExcessToken0Unstaked(token0Balance);
     }
 
     /**
      * @notice Allows anyone to claim a processed withdrawal id from `stakingManager`.
      * @param _id Id of withdrawal to confirm in `stakingManager`.
      * @return isConfirmed Boolean that indicates if the request got processed by this function call.
+     * @dev Bubbles up reverts from `stakingManager.confirmWithdrawal()`, including "not ready" failures.
      */
     function confirmWithdrawal(uint256 _id) external nonReentrant whenPoolNotLocked returns (bool isConfirmed) {
         isConfirmed = _confirmWithdrawal(_id);
 
         // Update accounting state immediately after confirmation
         if (isConfirmed) {
-            _update(false);
+            _update();
         }
     }
 
@@ -705,7 +916,8 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      *      the AMM's Sovereign Pool.
      */
     function update() external override nonReentrant whenPoolNotLocked {
-        _update(false);
+        _syncPendingUnstakeRequests(true);
+        _update();
     }
 
     /**
@@ -751,35 +963,34 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
      *  PRIVATE FUNCTIONS
      *
      */
-    function _update(bool isPoolRebalance) private {
+    function _update() private {
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
 
-        // `confirmWithdrawal` should be called in order to process confirmed withdrawals
-        // and accrue net new native token balance to this contract
+        // Finalized staking-manager withdrawals are synchronized before calling this function
+        // so pending unstaking and native balances are reconciled first.
 
         // Need to ensure that enough native token is reserved for settled LP withdrawals
         uint256 excessNativeBalance = _getExcessNativeBalance();
         if (excessNativeBalance == 0) return;
 
-        if (!isPoolRebalance) {
-            uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
-            uint256 excessToken0Balance = convertToToken0(excessNativeBalance);
-            if (amountToken0PendingUnstakingCache > excessToken0Balance) {
-                _amountToken0PendingUnstaking = amountToken0PendingUnstakingCache - excessToken0Balance;
-            } else {
-                _amountToken0PendingUnstaking = 0;
-            }
-        }
-
         // Allocate native token balance to pending LP withdrawal requests
         uint256 amountToken1PendingLPWithdrawalCache = _amountToken1PendingLPWithdrawal;
+        uint256 amountToken1PendingCoveredByQueuedUnstakeCache =
+            Math.min(_amountToken1PendingLPWithdrawalCoveredByQueuedUnstake, amountToken1PendingLPWithdrawalCache);
         if (excessNativeBalance > amountToken1PendingLPWithdrawalCache) {
             excessNativeBalance -= amountToken1PendingLPWithdrawalCache;
             amountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
             cumulativeAmountToken1ClaimableLPWithdrawal += amountToken1PendingLPWithdrawalCache;
             _amountToken1PendingLPWithdrawal = 0;
+            _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake = 0;
         } else {
             _amountToken1PendingLPWithdrawal -= excessNativeBalance;
+            if (amountToken1PendingCoveredByQueuedUnstakeCache > excessNativeBalance) {
+                _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake =
+                    amountToken1PendingCoveredByQueuedUnstakeCache - excessNativeBalance;
+            } else {
+                _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake = 0;
+            }
             amountToken1ClaimableLPWithdrawal += excessNativeBalance;
             cumulativeAmountToken1ClaimableLPWithdrawal += excessNativeBalance;
             excessNativeBalance = 0;
@@ -808,33 +1019,152 @@ contract kHYPEWithdrawalModule is IWithdrawalModule, ReentrancyGuardTransient, O
         // or has already been confirmed
         if (request.hypeAmount == 0) return false;
 
-        // Request is not yet ready to claim
-        if (block.timestamp < request.timestamp + IStakingManager(stakingManager).withdrawalDelay()) {
-            return false;
-        }
-
-        uint256 preBalance = address(this).balance;
-
         IStakingManager(stakingManager).confirmWithdrawal(id);
 
-        isConfirmed = address(this).balance >= preBalance + request.hypeAmount;
+        isConfirmed = true;
+        _decreaseAmountToken0PendingUnstaking(request.kHYPEAmount);
+        _removePendingUnstakeRequestId(id);
 
         emit WithdrawalRequestConfirmed(id, request.hypeAmount, isConfirmed);
     }
 
     function _unstakeToken0Reserves(uint256 amountToken0) private {
+        _syncPendingUnstakeRequests(false);
+        if (_pendingUnstakeRequestCount >= MAX_PENDING_UNSTAKE_REQUESTS) {
+            revert kHYPEWithdrawalModule__unstakeToken0Reserves_MaxPendingRequestsReached();
+        }
+
+        IStakingManager stakingManagerInterface = IStakingManager(stakingManager);
+        uint256 unstakeRequestId = stakingManagerInterface.nextWithdrawalId(address(this));
+
         ISTEXAMM(stex).unstakeToken0Reserves(amountToken0);
 
         // Kinetiq charges an unstaking fee
-        uint256 feeToken0 = Math.mulDiv(amountToken0, IStakingManager(stakingManager).unstakeFeeRate(), BIPS);
+        uint256 feeToken0 = Math.mulDiv(amountToken0, stakingManagerInterface.unstakeFeeRate(), BIPS);
+        uint256 amountToken0AfterFee = amountToken0 - feeToken0;
 
-        _amountToken0PendingUnstaking += (amountToken0 - feeToken0);
+        _amountToken0PendingUnstaking += amountToken0AfterFee;
+
+        // Mark pending LP liabilities now covered by queued unstaking,
+        // so covered liabilities are not grossed-up again in
+        // `amountToken1PendingLPWithdrawal()`.
+        // WARNING: This assumes that there is no slashing enabled in the LST protocol
+        uint256 amountToken1CoveredByThisUnstake = convertToToken1(amountToken0AfterFee);
+        uint256 excessNativeBalance = _getExcessNativeBalance();
+        uint256 pendingToken1Net = _amountToken1PendingLPWithdrawal > excessNativeBalance
+            ? _amountToken1PendingLPWithdrawal - excessNativeBalance
+            : 0;
+
+        uint256 pendingToken1CoveredByQueuedUnstake =
+            Math.min(_amountToken1PendingLPWithdrawalCoveredByQueuedUnstake, pendingToken1Net);
+        uint256 pendingToken1Uncovered = pendingToken1Net - pendingToken1CoveredByQueuedUnstake;
+        if (amountToken1CoveredByThisUnstake > pendingToken1Uncovered) {
+            amountToken1CoveredByThisUnstake = pendingToken1Uncovered;
+        }
+        _amountToken1PendingLPWithdrawalCoveredByQueuedUnstake =
+            pendingToken1CoveredByQueuedUnstake + amountToken1CoveredByThisUnstake;
 
         _unstakeToken0(amountToken0);
+        _trackPendingUnstakeRequest(unstakeRequestId);
+    }
+
+    function _syncPendingUnstakeRequests(bool _confirmReadyRequests) private {
+        uint256 pendingCount = _pendingUnstakeRequestCount;
+        // No pending unstaking requests to sync or confirm
+        if (pendingCount == 0) return;
+
+        IStakingManager stakingManagerInterface = IStakingManager(stakingManager);
+
+        uint256 i;
+        while (i < _pendingUnstakeRequestCount) {
+            uint256 requestId = _pendingUnstakeRequestIds[i];
+            IStakingManager.WithdrawalRequest memory request =
+                stakingManagerInterface.withdrawalRequests(address(this), requestId);
+
+            if (request.hypeAmount == 0) {
+                // Request has been cancelled by Kinetiq governance (gated operation)
+                // or has already been confirmed via `confirmWithdrawal`.
+                //
+                // `_decreaseAmountToken0PendingUnstaking` is intentionally NOT called here.
+                //
+                // - If already confirmed: the confirming call path (`_confirmWithdrawal` or the
+                //   `_confirmReadyRequests` branch below) already decremented the tracker.
+                //
+                // - If cancelled: Kinetiq returns the kHYPE to this contract, so
+                //   `_amountToken0PendingUnstaking` remains backed by real token0 value
+                //   (now held here instead of in the StakingManager queue). STEX AMM TVL
+                //   is unaffected because the tracker still represents real system-owned token0.
+                //   The owner should call `unstakeExcessToken0()` to re-queue, and once the
+                //   new request is confirmed, `_decreaseAmountToken0PendingUnstaking` reconciles
+                //   the tracker. See `unstakeExcessToken0` natspec for details.
+                _removePendingUnstakeRequestAt(i);
+                continue;
+            }
+
+            if (_confirmReadyRequests) {
+                try stakingManagerInterface.confirmWithdrawal(requestId) {
+                    _decreaseAmountToken0PendingUnstaking(request.kHYPEAmount);
+                    emit WithdrawalRequestConfirmed(requestId, request.hypeAmount, true);
+                    _removePendingUnstakeRequestAt(i);
+                    continue;
+                } catch {
+                    // Leave tracked; a future sync can retry once the staking manager accepts confirmation.
+                }
+            }
+
+            i++;
+        }
+    }
+
+    function _trackPendingUnstakeRequest(uint256 _requestId) private {
+        // Registers a new pending unstaking request to be tracked,
+        // ensuring it does not exceed MAX_PENDING_UNSTAKE_REQUESTS
+        uint256 pendingCount = _pendingUnstakeRequestCount;
+        if (pendingCount >= MAX_PENDING_UNSTAKE_REQUESTS) {
+            revert kHYPEWithdrawalModule__unstakeToken0Reserves_MaxPendingRequestsReached();
+        }
+
+        _pendingUnstakeRequestIds[pendingCount] = _requestId;
+        _pendingUnstakeRequestCount = pendingCount + 1;
+    }
+
+    function _removePendingUnstakeRequestId(uint256 _requestId) private {
+        // Removes a pending unstaking request, by _requestId, from the tracked list
+        uint256 pendingCount = _pendingUnstakeRequestCount;
+        for (uint256 i; i < pendingCount; i++) {
+            if (_pendingUnstakeRequestIds[i] == _requestId) {
+                _removePendingUnstakeRequestAt(i);
+                return;
+            }
+        }
+    }
+
+    function _removePendingUnstakeRequestAt(uint256 _index) private {
+        uint256 lastIndex = _pendingUnstakeRequestCount - 1;
+        if (_index != lastIndex) {
+            // Replaces the value from the removed index with the value from the last index
+            _pendingUnstakeRequestIds[_index] = _pendingUnstakeRequestIds[lastIndex];
+        }
+        // Deletes the value from the last index
+        delete _pendingUnstakeRequestIds[lastIndex];
+        // Reduces array size by 1
+        _pendingUnstakeRequestCount = lastIndex;
+    }
+
+    function _decreaseAmountToken0PendingUnstaking(uint256 _amountToken0Settled) private {
+        uint256 amountToken0PendingUnstakingCache = _amountToken0PendingUnstaking;
+        if (amountToken0PendingUnstakingCache > _amountToken0Settled) {
+            _amountToken0PendingUnstaking = amountToken0PendingUnstakingCache - _amountToken0Settled;
+        } else {
+            _amountToken0PendingUnstaking = 0;
+        }
     }
 
     function _unstakeToken0(uint256 amountToken0) private {
-        // Burn `amountToken0` worth of token0 through `stakingManager` withdrawal queue.
+        // Low-level primitive: queues a kHYPE withdrawal on StakingManager.
+        // Does NOT update `_amountToken0PendingUnstaking` or track the request ID.
+        // Callers that need accounting updates must handle those separately
+        // (see `_unstakeToken0Reserves` vs `unstakeExcessToken0`).
         // WARNING: This implementation assumes that there is no slashing enabled in the LST protocol
         _getToken(true).forceApprove(stakingManager, amountToken0);
         IStakingManager(stakingManager).queueWithdrawal(amountToken0);

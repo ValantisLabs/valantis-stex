@@ -23,22 +23,48 @@ contract MockOverseer is IOverseer {
 
     receive() external payable {}
 
-    function getBurnIds(address /*account*/ ) external pure override returns (uint256[] memory) {
+    function getBurnIds(
+        address /*account*/
+    )
+        external
+        pure
+        override
+        returns (uint256[] memory)
+    {
         // not implemented
         return new uint256[](0);
     }
 
-    function redeemable(uint256 /*_burnId*/ ) external pure override returns (bool) {
+    function redeemable(
+        uint256 /*_burnId*/
+    )
+        external
+        pure
+        override
+        returns (bool)
+    {
         // not implemented
         return false;
     }
 
-    function mint(address to, string memory /*communityCode*/ ) external payable override returns (uint256) {
+    function mint(
+        address to,
+        string memory /*communityCode*/
+    )
+        external
+        payable
+        override
+        returns (uint256)
+    {
         mockStHype.mint{value: msg.value}(to);
         return msg.value;
     }
 
-    function burnAndRedeemIfPossible(address to, uint256 amount, string memory /*_communityCode*/ )
+    function burnAndRedeemIfPossible(
+        address to,
+        uint256 amount,
+        string memory /*_communityCode*/
+    )
         external
         override
         returns (uint256)
@@ -64,7 +90,12 @@ contract MockOverseer is IOverseer {
         require(success, "failed to send ETH");
     }
 
-    function redeem(uint256 /*_burnId*/ ) external override {
+    function redeem(
+        uint256 /*_burnId*/
+    )
+        external
+        override
+    {
         // not implemented
     }
 }

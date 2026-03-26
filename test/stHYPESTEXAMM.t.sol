@@ -17,21 +17,20 @@ import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {STEXAMM} from "src/STEXAMM.sol";
 import {STEXLens} from "src/STEXLens.sol";
-import {STEXRatioSwapFeeModule} from "src/swap-fee-modules/STEXRatioSwapFeeModule.sol";
+import {StepwiseFeeModule} from "src/swap-fee-modules/StepwiseFeeModule.sol";
 import {stHYPEWithdrawalModule} from "src/withdrawal-modules/stHYPEWithdrawalModule.sol";
 import {MockOverseer} from "src/mocks/sthype/MockOverseer.sol";
 import {MockStHype} from "src/mocks/sthype/MockStHype.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
 import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {DepositWrapper} from "src/DepositWrapper.sol";
-import {FeeParams} from "src/structs/STEXRatioSwapFeeModuleStructs.sol";
 import {LPWithdrawalRequest} from "src/structs/WithdrawalModuleStructs.sol";
 
 contract stHYPESTEXAMMTest is Test {
     STEXAMM stex;
     STEXLens stexLens;
 
-    STEXRatioSwapFeeModule swapFeeModule;
+    StepwiseFeeModule swapFeeModule;
 
     stHYPEWithdrawalModule withdrawalModule;
 
@@ -73,7 +72,7 @@ contract stHYPESTEXAMMTest is Test {
 
         withdrawalModule = new stHYPEWithdrawalModule(address(overseer), wstHYPE, address(this));
 
-        swapFeeModule = new STEXRatioSwapFeeModule(owner);
+        swapFeeModule = new StepwiseFeeModule(owner);
         assertEq(swapFeeModule.owner(), owner);
 
         stex = new STEXAMM(
@@ -146,7 +145,7 @@ contract stHYPESTEXAMMTest is Test {
         assertEq(withdrawalModuleDeployment.stex(), address(0));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
 
-        STEXRatioSwapFeeModule swapFeeModuleDeployment = new STEXRatioSwapFeeModule(owner);
+        StepwiseFeeModule swapFeeModuleDeployment = new StepwiseFeeModule(owner);
         assertEq(swapFeeModuleDeployment.owner(), owner);
 
         vm.expectRevert(STEXAMM.STEXAMM__ZeroAddress.selector);
@@ -295,7 +294,7 @@ contract stHYPESTEXAMMTest is Test {
         vm.startPrank(owner);
         swapFeeModuleDeployment.setPool(stexDeployment.pool());
         assertEq(swapFeeModuleDeployment.pool(), stexDeployment.pool());
-        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setPool_alreadySet.selector);
+        vm.expectRevert(StepwiseFeeModule.StepwiseFeeModule__setPool_AlreadySet.selector);
         swapFeeModuleDeployment.setPool(makeAddr("MOCK_POOL"));
         vm.stopPrank();
 
@@ -469,43 +468,38 @@ contract stHYPESTEXAMMTest is Test {
     }
 
     function testSetSwapFeeParams() public {
-        _setSwapFeeParams(1000, 7000, 1, 20);
-        _setSwapFeeParams(11_000, 200_000, 1, 4999);
+        // Non-owner cannot set params
+        uint32[] memory feeSteps = new uint32[](2);
+        feeSteps[0] = 1;
+        feeSteps[1] = 30;
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        swapFeeModule.setFeeParamsToken0(15 ether, 30 ether, feeSteps);
+
+        // Successfully set params
+        _setSwapFeeParams(1, 20);
+        assertEq(swapFeeModule.minThresholdToken1(), 15 ether);
+        assertEq(swapFeeModule.maxThresholdToken1(), 30 ether);
+
+        _setSwapFeeParams(1, 4999);
+        assertEq(swapFeeModule.minThresholdToken1(), 15 ether);
+        assertEq(swapFeeModule.maxThresholdToken1(), 30 ether);
     }
 
-    function _setSwapFeeParams(
-        uint32 minThresholdRatioBips,
-        uint32 maxThresholdRatioBips,
-        uint32 feeMinBips,
-        uint32 feeMaxBips
-    ) private {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
-
+    function _setSwapFeeParams(uint32 feeMinBips, uint32 feeMaxBips) private {
         vm.startPrank(owner);
-
-        vm.expectRevert(
-            STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentThresholdRatioParams.selector
-        );
-        swapFeeModule.setSwapFeeParams(maxThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
-
-        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMin.selector);
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 5_000, feeMaxBips);
-
-        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_invalidFeeMax.selector);
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, 5_000);
-
-        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__setSwapFeeParams_inconsistentFeeParams.selector);
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, 2, 1);
-
-        swapFeeModule.setSwapFeeParams(minThresholdRatioBips, maxThresholdRatioBips, feeMinBips, feeMaxBips);
-
-        (uint32 minThresholdRatio, uint32 maxThresholdRatio, uint32 feeMin, uint32 feeMax) = swapFeeModule.feeParams();
-        assertEq(minThresholdRatio, minThresholdRatioBips);
-        assertEq(maxThresholdRatio, maxThresholdRatioBips);
-        assertEq(feeMin, feeMinBips);
-        assertEq(feeMax, feeMaxBips);
-
+        if (feeMinBips == feeMaxBips) {
+            uint32[] memory feeSteps = new uint32[](1);
+            feeSteps[0] = feeMinBips;
+            swapFeeModule.setFeeParamsToken0(15 ether, 30 ether, feeSteps);
+        } else {
+            uint32[] memory feeSteps = new uint32[](5);
+            feeSteps[0] = feeMinBips;
+            feeSteps[1] = feeMinBips + (feeMaxBips - feeMinBips) / 4;
+            feeSteps[2] = feeMinBips + (feeMaxBips - feeMinBips) / 2;
+            feeSteps[3] = feeMinBips + 3 * (feeMaxBips - feeMinBips) / 4;
+            feeSteps[4] = feeMaxBips;
+            swapFeeModule.setFeeParamsToken0(15 ether, 30 ether, feeSteps);
+        }
         vm.stopPrank();
     }
 
@@ -636,7 +630,7 @@ contract stHYPESTEXAMMTest is Test {
         testDeposit();
 
         // AMM swap fee as 1 bips
-        _setSwapFeeParams(3000, 5000, 1, 1);
+        _setSwapFeeParams(1, 1);
 
         address recipient = makeAddr("MOCK_RECIPIENT_FROM_TOKEN0");
 
@@ -857,7 +851,7 @@ contract stHYPESTEXAMMTest is Test {
 
         address recipient = makeAddr("RECIPIENT");
 
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         _deposit(10e18, recipient);
 
@@ -894,7 +888,7 @@ contract stHYPESTEXAMMTest is Test {
 
         address recipient = makeAddr("RECIPIENT");
 
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         _deposit(10e18, recipient);
 
@@ -933,7 +927,7 @@ contract stHYPESTEXAMMTest is Test {
 
         address recipient = makeAddr("RECIPIENT");
 
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         _deposit(10e18, recipient);
 
@@ -1012,7 +1006,7 @@ contract stHYPESTEXAMMTest is Test {
         address recipient1 = makeAddr("RECIPIENT_1");
         address recipient2 = makeAddr("RECIPIENT_2");
 
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         // user 1 deposits
         _deposit(10 ether, recipient1);
@@ -1112,7 +1106,7 @@ contract stHYPESTEXAMMTest is Test {
         assertFalse(stex.isLocked());
 
         address recipient = makeAddr("RECIPIENT");
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         {
             uint256 amountOutSimulation = stex.getAmountOut(address(token0), 0, false);
@@ -1128,10 +1122,6 @@ contract stHYPESTEXAMMTest is Test {
         params.deadline = block.timestamp;
         params.swapTokenOut = address(weth);
         params.recipient = recipient;
-
-        // zero token1 liquidity
-        vm.expectRevert(STEXRatioSwapFeeModule.STEXRatioSwapFeeModule__getSwapFeeInBips_ZeroReserveToken1.selector);
-        stex.getAmountOut(address(token0), params.amountIn, false);
 
         _addPoolReserves(0, 30 ether);
 
@@ -1190,7 +1180,7 @@ contract stHYPESTEXAMMTest is Test {
 
     function testSwap__SplitAmountVsFullAmount() public {
         address recipient = makeAddr("RECIPIENT");
-        _setSwapFeeParams(3000, 5000, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         _addPoolReserves(0, 30 ether);
 
@@ -1237,8 +1227,6 @@ contract stHYPESTEXAMMTest is Test {
         assertLt(withdrawalModule.convertToToken0(amountOut), amountInUsed);
         assertEq(amountOut, amountOutEstimate);
         swapFeeData = swapFeeModule.getSwapFeeInBips(address(token0), address(0), 0, address(0), new bytes(0));
-        // Split swaps yields strictly worse trade execution
-        assertLt(amountOutTotalSplitSwaps, amountOut);
     }
 
     function testClaimPoolManagerFees() public {
@@ -1247,7 +1235,7 @@ contract stHYPESTEXAMMTest is Test {
         stex.setPoolManagerFeeBips(100);
 
         address recipient = makeAddr("RECIPIENT");
-        _setSwapFeeParams(100, 200, 1, 30);
+        _setSwapFeeParams(1, 30);
 
         _addPoolReserves(0, 30 ether);
 

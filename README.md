@@ -27,13 +27,11 @@ Contains STEX AMM's core contracts, Module dependencies and Mock contracts used 
 
 **STEXLens.sol**: Helper contract that contains read-only functions which are useful to simulate state updates in `STEXAMM`. WARNING: Only compatible with `stHYPEWithdrawalModule` and `kHYPEWithdrawalModule`.
 
-**STEXRatioSwapFeeModule.sol**: Contains a dynamic fee mechanism for swaps on STEX AMM, based on the ratio of reserves between the LST and wrapped native token, built as a Valantis [Swap Fee Module](https://docs.valantis.xyz/sovereign-pool-subpages/modules/swap-fee-module).
-
 **StepwiseFeeModule.sol**: Contains a dynamic fee mechanism for swaps on STEX AMM, using a stepwise function pricing curve whose shape can be determined off-chain using sophisticated models and pricing information, built as a Valantis [Swap Fee Module](https://docs.valantis.xyz/sovereign-pool-subpages/modules/swap-fee-module).
 
-**stHYPEWithdrawalModule.sol**: Module that manages all of STEX AMM's interactions with [stakedHYPE](https://www.stakedhype.fi/), a leading LST protocol on HyperEVM developed by [Thunderhead](https://thunderhead.xyz/).
+**stHYPEWithdrawalModule.sol**: Module that manages all of STEX AMM's interactions with [stakedHYPE](https://app.valantis.xyz/staking).
 
-**kHYPEWithdrawalModule.sol**: Module that manages all of STEX AMM's interactions with [kHYPE](https://kinetiq.xyz/), a leading LST protocol on HyperEVM developed by [Kinetiq](https://kinetiq.xyz/).
+**kHYPEWithdrawalModule.sol**: Module that manages all of STEX AMM's interactions with [kHYPE](https://kinetiq.xyz/).
 
 **owner/stHYPEWithdrawalModuleManager.sol**: Custom contract that has the `owner` role in `stHYPEWithdrawalModule`. It is controlled by a multi-sig.
 
@@ -100,22 +98,25 @@ Role:
 - Can use liquid token1 reserves in the `pool` to net off against pending LP withdrawals, delivering faster LP withdrawals whenever available.
 - Can rescue any locked tokens which are not the native token, token0 nor token1.
 - Can unstake any surplus balance of token0 to the kHYPE `StakingManager` queueWithdrawal function. This can happen in case of donations or cancelled unstaking operations by `StakingManager`.
+- Can set `_amountToken0PendingUnstakingOffset` up to its immutable maximum bound, which acts as a virtual reserve amount for STEXAMM.
 
 Risks:
 
 - `owner` can steal token1 reserves with a minimum 3-day timelock by upgrading the `Lending Module` to a malicious contract. Currently the `owner` role is managed by a trusted multi-sig.
 - Due to the fact that Kinetiq protocol can update unstaking fees, and unstaking of token0 reserves is managed by `owner` and is separate from the LP's withdrawal initiation, there can be a mismatch between the amount of HYPE which the LP expects to receive vs. what is actually returned after unstaking is processed. `owner` is trusted to quickly unstake after LPs initiate withdrawal requests and to pay attention to any sudden changes in Kinetiq's unstaking fee, in order to minimize such discrepancies.
+- `owner` can set `_amountTokenPendingUnstakingOffset`, up to its maximum bound, hence inflating STEXAMM's TVL.
 
 **Lending Module in kHYPEWithdrawalModule**
 
 The integrated lending protocol in `Lending Module` custodies a portion of token1 reserves determined by `owner`.
-For example, `AAVELendingModule` contract provides a concrete implementation compatible with AAVE V3 deployments.
+The `AAVELendingModule` contract provides a concrete implementation compatible with AAVE V3 deployments.
 
 Risks:
 
 - If the integrated lending protocol becomes insolvent or contains faulty withdrawal logic, funds will be lost.
 - If the integrated lending protocol is working correctly but does not have enough liquidity to honor instant withdrawals, then LP withdrawals via `STEX AMM` withdraw function would become temporarily blocked. In this scenario, the user is expected to withdraw at a later stage.
 - It is assumed that the lending protocol's deposit function does not allow for partially deposited amounts. If that is the case, `Lending Module` would need to handle refunds of unused token amounts back into the pool.
+- Lending module upgrades do not enforce full recall of lending reserves. This is to allow unconditional upgrades, even in cases where there has been a realized loss in external lending protocol integrations. The owner role is entrusted to ensure that all possible token1 reserves are recalled from the current `Lending Module` back into the pool, before upgrading to a new `Lending Module`.
 
 **Kinetiq Protocol Risks and Assumptions:** kHYPE AMM integrates with the `StakingManager` contract for token0 (kHYPE) withdrawals, and `StakingAccountant` for reading exchange rates between kHYPE and HYPE. kHYPE AMM allows the external custody of up to 100% of the AMM's token0 reserves as Pending Withdrawals. `StakingManager` and `Staking Accountant` are upgradable, and kHYPE AMM trusts the management of Kinetiq protocol to manage its kHYPE assets for delayed redemption at its true rate.
 
@@ -128,6 +129,14 @@ kHYPE AMM protects against secondary-market depeg arbitrage loss by never sellin
 **Inventory Risk**
 
 An LP position can consist of HYPE, kHYPE, and pending kHYPE withdrawals. Upon withdrawing the LP position, a user may withdraw their illiquid portion of pending kHYPE Withdrawals instantly for a fee. In the case of pending withdrawals, to be given the full value of their position, the user must wait until maturity of their pending withdrawal.
+
+**Dynamic Unstake Fee Risk**
+
+kHYPEWithdrawalModule assumes that kHYPE's unstaking fee is mostly constant over time, with rare changes. Unexpected changes in the unstake fee can lead to over or under reservation of STEXAMM obligations for LP withdrawals.
+
+**kHYPE Unstake Cancellation Risk**
+
+kHYPE protocol reserves the right to cancel kHYPE unstaking requests, which returns the original kHYPE amount back to `kHYPEWithdrawalModule`. If this ever happens, `kHYPEWithdrawalModule` assumes that it can simply try to unstake again, one or multiple times, until the pending kHYPE withdrawal gets settled, hence why there is no change in account for `_amountToken0PendingUnstaking` in case of kHYPE withdrawal cancellations.
 
 ### License
 

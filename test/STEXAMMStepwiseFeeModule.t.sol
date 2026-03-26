@@ -132,9 +132,8 @@ contract STEXAMMStepwiseFeeModuleTest is Test {
     function testSetStepwiseSwapFeeParams_revertsWhenThresholdFlipped() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                StepwiseFeeModule
-                    .StepwiseFeeModule__setFeeParamsToken0__MinToken1ThresholdAboveMaxToken1Threshold
-                    .selector
+                StepwiseFeeModule.StepwiseFeeModule__setFeeParamsToken0__MinToken1ThresholdAboveMaxToken1Threshold
+                .selector
             )
         );
         uint256 minThreshold = 100 ether;
@@ -148,9 +147,8 @@ contract STEXAMMStepwiseFeeModuleTest is Test {
     function testSetStepwiseSwapFeeParams_revertsWhenThresholdEqual() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                StepwiseFeeModule
-                    .StepwiseFeeModule__setFeeParamsToken0__MinToken1ThresholdAboveMaxToken1Threshold
-                    .selector
+                StepwiseFeeModule.StepwiseFeeModule__setFeeParamsToken0__MinToken1ThresholdAboveMaxToken1Threshold
+                .selector
             )
         );
         uint256 minThreshold = 100 ether;

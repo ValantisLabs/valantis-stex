@@ -213,9 +213,9 @@ contract STEXLens {
             uint256 amount1SwapEquivalent = stexInterface.getAmountOut(stexInterface.token0(), amount0, true);
             // Apply manager fee on instant withdrawals in token1
             uint256 amount1WithFee = withdrawalModule.convertToToken1(amount0);
-            cache.instantWithdrawalFee1 = (
-                (amount1WithFee - amount1SwapEquivalent) * ISovereignPool(stexInterface.pool()).poolManagerFeeBips()
-            ) / BIPS;
+            cache.instantWithdrawalFee1 =
+                ((amount1WithFee - amount1SwapEquivalent) * ISovereignPool(stexInterface.pool()).poolManagerFeeBips())
+                    / BIPS;
             amount1 += amount1SwapEquivalent;
 
             amount0 = 0;

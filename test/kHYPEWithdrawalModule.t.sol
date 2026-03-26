@@ -2,16 +2,17 @@
 pragma solidity ^0.8.25;
 
 import {Test} from "forge-std/Test.sol";
-import {console} from "forge-std/console.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {WETH} from "@solmate/tokens/WETH.sol";
 
 import {AaveLendingModule} from "src/lending-modules/AaveLendingModule.sol";
 import {kHYPEWithdrawalModule} from "src/withdrawal-modules/kHYPEWithdrawalModule.sol";
 import {STEXLens} from "src/STEXLens.sol";
 import {IRebalanceModule} from "src/interfaces/IRebalanceModule.sol";
+import {IStakingManager} from "src/interfaces/kinetiq/IStakingManager.sol";
 import {MockLendingPool} from "src/mocks/MockLendingPool.sol";
 import {MockStakingAccountant} from "src/mocks/kinetiq/MockStakingAccountant.sol";
 import {MockStakingManager} from "src/mocks/kinetiq/MockStakingManager.sol";
@@ -111,6 +112,7 @@ contract kHYPEWithdrawalModuleTest is Test {
     address public owner = makeAddr("OWNER");
 
     uint256 private constant BIPS = 10_000;
+    uint256 private constant MAX_PENDING_UNSTAKING_OFFSET = type(uint96).max;
 
     function setUp() public {
         stexLens = new STEXLens();
@@ -132,7 +134,9 @@ contract kHYPEWithdrawalModuleTest is Test {
         assertEq(lendingPool.underlyingAsset(), address(weth));
         assertEq(lendingPool.lendingPoolYieldToken(), address(lendingPool));
 
-        _withdrawalModule = new kHYPEWithdrawalModule(address(stakingAccountant), address(stakingManager), owner);
+        _withdrawalModule = new kHYPEWithdrawalModule(
+            address(stakingAccountant), address(stakingManager), owner, MAX_PENDING_UNSTAKING_OFFSET
+        );
 
         vm.startPrank(owner);
         // AMM will be mocked to make testing more flexible
@@ -205,22 +209,132 @@ contract kHYPEWithdrawalModuleTest is Test {
 
     function testDeploy() public returns (kHYPEWithdrawalModule withdrawalModuleDeployment) {
         vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__ZeroAddress.selector);
-        new kHYPEWithdrawalModule(address(0), address(stakingManager), address(this));
+        new kHYPEWithdrawalModule(address(0), address(stakingManager), address(this), MAX_PENDING_UNSTAKING_OFFSET);
 
         vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__ZeroAddress.selector);
-        new kHYPEWithdrawalModule(address(stakingAccountant), address(0), address(this));
+        new kHYPEWithdrawalModule(address(stakingAccountant), address(0), address(this), MAX_PENDING_UNSTAKING_OFFSET);
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new kHYPEWithdrawalModule(address(stakingAccountant), address(stakingManager), address(0));
+        new kHYPEWithdrawalModule(
+            address(stakingAccountant), address(stakingManager), address(0), MAX_PENDING_UNSTAKING_OFFSET
+        );
 
-        withdrawalModuleDeployment =
-            new kHYPEWithdrawalModule(address(stakingAccountant), address(stakingManager), address(this));
+        withdrawalModuleDeployment = new kHYPEWithdrawalModule(
+            address(stakingAccountant), address(stakingManager), address(this), MAX_PENDING_UNSTAKING_OFFSET
+        );
         assertEq(withdrawalModuleDeployment.stakingAccountant(), address(stakingAccountant));
         assertEq(withdrawalModuleDeployment.stakingManager(), address(stakingManager));
         assertEq(withdrawalModuleDeployment.owner(), address(this));
         assertEq(address(withdrawalModuleDeployment.lendingModule()), address(0));
         assertEq(withdrawalModuleDeployment.amountToken1LendingPool(), 0);
         assertEq(withdrawalModuleDeployment.overseer(), address(stakingManager));
+        assertEq(withdrawalModuleDeployment.burnFeeBips(), 0);
+        assertEq(withdrawalModuleDeployment.amountToken0PendingUnstakingOffset(), 0);
+    }
+
+    function testAmountToken0PendingUnstakingOffset_OwnerOnlyAndBounds() public {
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingOffset(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.setAmountToken0PendingUnstakingOffset(1 ether);
+
+        uint256 maxOffset = _withdrawalModule.MAX_AMOUNT_TOKEN0_PENDING_UNSTAKING_OFFSET();
+        vm.startPrank(owner);
+        _withdrawalModule.setAmountToken0PendingUnstakingOffset(maxOffset);
+        vm.expectRevert(
+            kHYPEWithdrawalModule.kHYPEWithdrawalModule__setAmountToken0PendingUnstakingOffset_OffsetTooHigh.selector
+        );
+        _withdrawalModule.setAmountToken0PendingUnstakingOffset(maxOffset + 1);
+        vm.stopPrank();
+
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingOffset(), maxOffset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), maxOffset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), maxOffset);
+    }
+
+    function testAmountToken0PendingUnstakingOffset_DoesNotAffectInternalQueueAccounting() public {
+        uint256 offset = 2 ether;
+
+        vm.prank(owner);
+        _withdrawalModule.setAmountToken0PendingUnstakingOffset(offset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), offset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), offset);
+
+        uint256 unstakeAmountToken0 = 3 ether;
+        uint256 unstakeAmountToken0AfterFee = (unstakeAmountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+        _unstakeToken0Reserves(unstakeAmountToken0);
+
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), offset + unstakeAmountToken0AfterFee);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), offset + unstakeAmountToken0AfterFee);
+
+        vm.deal(address(stakingManager), unstakeAmountToken0AfterFee);
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
+        assertTrue(isConfirmed);
+
+        // Internal pending queue accounting clears to zero, while offset remains until explicitly reduced.
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingOffset(), offset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), offset);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), offset);
+
+        vm.prank(owner);
+        _withdrawalModule.setAmountToken0PendingUnstakingOffset(0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingOffset(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+    }
+
+    function testBurnFeeBipsProposal() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.proposeBurnFeeBips(1, 3 days);
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.cancelBurnFeeBipsProposal();
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        _withdrawalModule.setProposedBurnFeeBips();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__setBurnFeeBips_FeeTooHigh.selector);
+        _withdrawalModule.proposeBurnFeeBips(101, 3 days);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooLow.selector);
+        _withdrawalModule.proposeBurnFeeBips(50, 3 days - 1);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule___verifyTimelockDelay_TimelockTooHigh.selector);
+        _withdrawalModule.proposeBurnFeeBips(50, 7 days + 1);
+
+        _withdrawalModule.proposeBurnFeeBips(100, 3 days);
+        (uint256 proposedFeeBips, uint256 startTimestamp) = _withdrawalModule.burnFeeBipsProposal();
+        assertEq(proposedFeeBips, 100);
+        assertEq(startTimestamp, block.timestamp + 3 days);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__proposeBurnFeeBips_ProposalAlreadyActive.selector);
+        _withdrawalModule.proposeBurnFeeBips(55, 3 days);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__setProposedBurnFeeBips_ProposalNotActive.selector);
+        _withdrawalModule.setProposedBurnFeeBips();
+
+        _withdrawalModule.cancelBurnFeeBipsProposal();
+        (proposedFeeBips, startTimestamp) = _withdrawalModule.burnFeeBipsProposal();
+        assertEq(proposedFeeBips, 0);
+        assertEq(startTimestamp, 0);
+
+        vm.expectRevert(kHYPEWithdrawalModule.kHYPEWithdrawalModule__setProposedBurnFeeBips_InactiveProposal.selector);
+        _withdrawalModule.setProposedBurnFeeBips();
+
+        _withdrawalModule.proposeBurnFeeBips(55, 3 days);
+        vm.warp(block.timestamp + 3 days);
+        _withdrawalModule.setProposedBurnFeeBips();
+        assertEq(_withdrawalModule.burnFeeBips(), 55);
+        (proposedFeeBips, startTimestamp) = _withdrawalModule.burnFeeBipsProposal();
+        assertEq(proposedFeeBips, 0);
+        assertEq(startTimestamp, 0);
+
+        vm.stopPrank();
     }
 
     function testSweep() public {
@@ -362,6 +476,34 @@ contract kHYPEWithdrawalModuleTest is Test {
         _burnToken0AfterWithdraw(amountToken0, recipient);
     }
 
+    function testBurnToken0AfterWithdraw_UsesBurnFeeFloorWhenUnstakeFeeIsLower() public {
+        stakingManager.setUnstakeFeeRate(0);
+
+        _setBurnFeeBips(100);
+
+        uint256 amountToken0 = 1 ether;
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
+
+        LPWithdrawalRequest memory request = _withdrawalModule.getLPWithdrawals(0);
+        assertEq(request.amountToken1, _expectedAmountToken1AfterWithdrawFee(amountToken0));
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), request.amountToken1);
+    }
+
+    function testBurnToken0AfterWithdraw_UsesUnstakeFeeWhenHigherThanBurnFeeFloor() public {
+        stakingManager.setUnstakeFeeRate(200);
+
+        _setBurnFeeBips(100);
+
+        uint256 amountToken0 = 1 ether;
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
+
+        LPWithdrawalRequest memory request = _withdrawalModule.getLPWithdrawals(0);
+        assertEq(request.amountToken1, _expectedAmountToken1AfterWithdrawFee(amountToken0));
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), request.amountToken1);
+    }
+
     function testUnstakeToken0Reserves() public {
         assertFalse(_withdrawalModule.isLocked());
 
@@ -495,6 +637,8 @@ contract kHYPEWithdrawalModuleTest is Test {
 
         vm.startPrank(owner);
 
+        vm.expectEmit(false, false, false, true, address(_withdrawalModule));
+        emit kHYPEWithdrawalModule.ExcessToken0Unstaked(10 ether);
         _withdrawalModule.unstakeExcessToken0();
         postBalance = _token0.balanceOf(address(stakingManager));
         assertEq(postBalance - preBalance, 10 ether);
@@ -578,9 +722,8 @@ contract kHYPEWithdrawalModuleTest is Test {
         lendingPool.setIsCompromised(true);
 
         vm.expectRevert(
-            kHYPEWithdrawalModule
-                .kHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn
-                .selector
+            kHYPEWithdrawalModule.kHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn
+            .selector
         );
         _withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);
     }
@@ -605,16 +748,16 @@ contract kHYPEWithdrawalModuleTest is Test {
         _withdrawalModule.confirmWithdrawal(0);
         MockPool(_pool).setIsLocked(false);
 
-        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
-        assertFalse(isConfirmed);
-        isConfirmed = _withdrawalModule.confirmWithdrawal(1);
-        assertFalse(isConfirmed);
+        vm.expectRevert(bytes("No valid withdrawal request"));
+        _withdrawalModule.confirmWithdrawal(0);
+        vm.expectRevert(bytes("No valid withdrawal request"));
+        _withdrawalModule.confirmWithdrawal(1);
 
         vm.deal(address(stakingManager), (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS);
 
         vm.warp(block.timestamp + 7 days);
 
-        isConfirmed = _withdrawalModule.confirmWithdrawal(0);
+        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
         assertTrue(isConfirmed);
         vm.expectRevert(bytes("Insufficient contract balance"));
         _withdrawalModule.confirmWithdrawal(1);
@@ -639,6 +782,325 @@ contract kHYPEWithdrawalModuleTest is Test {
         assertFalse(isConfirmed);
         isConfirmed = _withdrawalModule.confirmWithdrawal(1);
         assertFalse(isConfirmed);
+    }
+
+    function testUpdate_AutoConfirmsTrackedWithdrawalRequests() public {
+        uint256 amountToken0PerRequest = 1 ether;
+        uint256 amountToken1PerRequest = (amountToken0PerRequest * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+
+        for (uint256 i; i < 5; i++) {
+            _unstakeToken0Reserves(amountToken0PerRequest);
+        }
+
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 5 * amountToken1PerRequest);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 5 * amountToken1PerRequest);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
+
+        vm.deal(address(stakingManager), 5 * amountToken1PerRequest);
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+
+        _withdrawalModule.update();
+
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
+        assertEq(address(_withdrawalModule).balance, 0);
+        assertEq(weth.balanceOf(address(_pool)), 5 * amountToken1PerRequest);
+    }
+
+    function testUpdate_FirstTrackedRequestTemporarilyRevertsButRemainingRequestsClear() public {
+        // Queue 5 requests with request 0 intentionally larger than the rest.
+        // We then underfund StakingManager so request 0 reverts on confirm,
+        // while requests 1..4 are still confirmable and should clear in the same update.
+        uint256 firstAmountToken0 = 5 ether;
+        uint256 otherAmountToken0 = 1 ether;
+
+        _unstakeToken0Reserves(firstAmountToken0); // request id = 0
+        for (uint256 i; i < 4; i++) {
+            _unstakeToken0Reserves(otherAmountToken0); // request ids = 1..4
+        }
+
+        uint256 firstAmountToken0AfterFee = (firstAmountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+        uint256 otherAmountToken0AfterFee = (otherAmountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 5);
+        assertEq(
+            _withdrawalModule.amountToken0PendingUnstaking(), firstAmountToken0AfterFee + 4 * otherAmountToken0AfterFee
+        );
+
+        // Make all requests mature.
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+
+        // Underfund so id=0 reverts ("Insufficient contract balance"), but ids 1..4 can still be confirmed.
+        vm.deal(address(stakingManager), 4 * otherAmountToken0AfterFee);
+        _withdrawalModule.update();
+
+        // Request 0 remains queued; requests 1..4 are cleared.
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 1);
+        assertEq(_withdrawalModule.pendingUnstakeRequestIdAt(0), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), firstAmountToken0AfterFee);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), firstAmountToken0AfterFee);
+
+        IStakingManager.WithdrawalRequest memory request0 =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), 0);
+        assertGt(request0.hypeAmount, 0);
+        for (uint256 id = 1; id <= 4; id++) {
+            IStakingManager.WithdrawalRequest memory requestCleared =
+                stakingManager.withdrawalRequests(address(_withdrawalModule), id);
+            assertEq(requestCleared.hypeAmount, 0);
+        }
+
+        // Confirmed native token from requests 1..4 was wrapped and returned to pool.
+        assertEq(weth.balanceOf(address(_pool)), 4 * otherAmountToken0AfterFee);
+
+        // Temporary failure resolves once StakingManager gets funded for request 0.
+        vm.deal(address(stakingManager), firstAmountToken0AfterFee);
+        _withdrawalModule.update();
+
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+        assertEq(weth.balanceOf(address(_pool)), 4 * otherAmountToken0AfterFee + firstAmountToken0AfterFee);
+    }
+
+    function testUpdate_MixedCancelledMatureAndNotReadyRequests_DoNotSkipSwappedEntries() public {
+        uint256 amountToken0 = 1 ether;
+        uint256 amountToken0AfterFee = (amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+
+        // Requests 0 and 1 are older than requests 2..4.
+        _unstakeToken0Reserves(amountToken0); // id = 0
+        _unstakeToken0Reserves(amountToken0); // id = 1
+
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay() - 1 days);
+
+        _unstakeToken0Reserves(amountToken0); // id = 2
+        _unstakeToken0Reserves(amountToken0); // id = 3
+        _unstakeToken0Reserves(amountToken0); // id = 4
+
+        // id=1 is cancelled and should be pruned during sync.
+        stakingManager.cancelWithdrawal(address(_withdrawalModule), 1);
+
+        // Only id=0 is mature and confirmable; ids 2..4 are not yet ready.
+        IStakingManager.WithdrawalRequest memory request0 =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), 0);
+        vm.deal(address(stakingManager), request0.hypeAmount);
+        vm.warp(block.timestamp + 1 days);
+
+        _withdrawalModule.update();
+
+        // Tracked queue keeps only not-ready ids 2..4.
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 3);
+
+        bool seen2;
+        bool seen3;
+        bool seen4;
+        for (uint256 i; i < 3; i++) {
+            uint256 id = _withdrawalModule.pendingUnstakeRequestIdAt(i);
+            assertTrue(id == 2 || id == 3 || id == 4);
+            if (id == 2) seen2 = true;
+            if (id == 3) seen3 = true;
+            if (id == 4) seen4 = true;
+        }
+        assertTrue(seen2 && seen3 && seen4);
+
+        // id=0 confirmed, id=1 cancelled/pruned, ids 2..4 still live.
+        assertEq(stakingManager.withdrawalRequests(address(_withdrawalModule), 0).hypeAmount, 0);
+        assertEq(stakingManager.withdrawalRequests(address(_withdrawalModule), 1).hypeAmount, 0);
+        assertGt(stakingManager.withdrawalRequests(address(_withdrawalModule), 2).hypeAmount, 0);
+        assertGt(stakingManager.withdrawalRequests(address(_withdrawalModule), 3).hypeAmount, 0);
+        assertGt(stakingManager.withdrawalRequests(address(_withdrawalModule), 4).hypeAmount, 0);
+
+        // Accounting decreases only by successfully confirmed requests.
+        // Cancellation does not decrement pending unstaking because cancellation-retry flow
+        // re-unstakes the returned token0 separately via `unstakeExcessToken0`.
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 4 * amountToken0AfterFee);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 4 * amountToken0AfterFee);
+        assertEq(weth.balanceOf(address(_pool)), amountToken0AfterFee);
+    }
+
+    function testUpdate_RepeatedTemporaryConfirmFailures_AreIdempotentUntilFundingArrives() public {
+        uint256 amountToken0 = 3 ether;
+        uint256 amountToken0AfterFee = (amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+
+        _unstakeToken0Reserves(amountToken0);
+
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+        vm.deal(address(stakingManager), 0);
+
+        // Multiple retries should not mutate accounting when confirmation keeps failing.
+        for (uint256 i; i < 3; i++) {
+            _withdrawalModule.update();
+            assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 1);
+            assertEq(_withdrawalModule.pendingUnstakeRequestIdAt(0), 0);
+            assertEq(_withdrawalModule.amountToken0PendingUnstaking(), amountToken0AfterFee);
+            assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), amountToken0AfterFee);
+            assertGt(stakingManager.withdrawalRequests(address(_withdrawalModule), 0).hypeAmount, 0);
+            assertEq(weth.balanceOf(address(_pool)), 0);
+        }
+
+        // Once funded, a later retry clears exactly once.
+        vm.deal(address(stakingManager), amountToken0AfterFee);
+        _withdrawalModule.update();
+
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+        assertEq(stakingManager.withdrawalRequests(address(_withdrawalModule), 0).hypeAmount, 0);
+        assertEq(weth.balanceOf(address(_pool)), amountToken0AfterFee);
+    }
+
+    function testSettlePendingWithdrawalsWithPoolReserves_PreSyncConfirmFailureKeepsTrackedUnstake() public {
+        uint256 amountToken0 = 3 ether;
+        uint256 amountToken0AfterFee = (amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+        address recipient = makeAddr("MOCK_RECIPIENT");
+
+        _unstakeToken0Reserves(amountToken0);
+        _burnToken0AfterWithdraw(amountToken0, recipient);
+
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+        vm.deal(address(stakingManager), 0);
+
+        uint256 pendingLPBefore = _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
+        uint256 poolBalanceBefore = weth.balanceOf(address(_pool));
+
+        vm.prank(owner);
+        _withdrawalModule.settlePendingWithdrawalsWithPoolReserves(pendingLPBefore);
+
+        // Pre-sync confirmation attempt failed (temporary), so unstake remains tracked.
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 1);
+        assertEq(_withdrawalModule.pendingUnstakeRequestIdAt(0), 0);
+        assertGt(stakingManager.withdrawalRequests(address(_withdrawalModule), 0).hypeAmount, 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), amountToken0AfterFee);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), amountToken0AfterFee);
+
+        // LP obligations are still settled from pool reserves atomically.
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), 0);
+        assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), pendingLPBefore);
+        assertEq(address(_withdrawalModule).balance, pendingLPBefore);
+        assertEq(weth.balanceOf(address(_pool)), poolBalanceBefore);
+    }
+
+    function testPendingUnstakeRequestGetters() public {
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 0);
+        vm.expectRevert(
+            kHYPEWithdrawalModule.kHYPEWithdrawalModule__pendingUnstakeRequestIdAt_IndexOutOfBounds.selector
+        );
+        _withdrawalModule.pendingUnstakeRequestIdAt(0);
+
+        _unstakeToken0Reserves(1 ether);
+        _unstakeToken0Reserves(1 ether);
+
+        assertEq(_withdrawalModule.pendingUnstakeRequestCount(), 2);
+        assertEq(stakingManager.nextWithdrawalId(address(_withdrawalModule)), 2);
+
+        uint256 id0 = _withdrawalModule.pendingUnstakeRequestIdAt(0);
+        uint256 id1 = _withdrawalModule.pendingUnstakeRequestIdAt(1);
+        assertTrue((id0 == 0 && id1 == 1) || (id0 == 1 && id1 == 0));
+
+        vm.expectRevert(
+            kHYPEWithdrawalModule.kHYPEWithdrawalModule__pendingUnstakeRequestIdAt_IndexOutOfBounds.selector
+        );
+        _withdrawalModule.pendingUnstakeRequestIdAt(2);
+    }
+
+    function testAmountToken1PendingLPWithdrawalCoveredByQueuedUnstakeGetter() public {
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalCoveredByQueuedUnstake(), 0);
+
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _burnToken0AfterWithdraw(3 ether, recipient);
+        _unstakeToken0Reserves(1 ether);
+
+        uint256 amountToken0AfterUnstakeFee = (1 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+        uint256 expectedCovered = _withdrawalModule.convertToToken1(amountToken0AfterUnstakeFee);
+
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalCoveredByQueuedUnstake(), expectedCovered);
+    }
+
+    function testUnstakeToken0Reserves_RevertsAtMaxPendingRequests() public {
+        uint256 amountToken0 = 1 ether;
+        for (uint256 i; i < 5; i++) {
+            _unstakeToken0Reserves(amountToken0);
+        }
+
+        _token0.transfer(address(_withdrawalModule), amountToken0);
+
+        vm.startPrank(owner);
+        vm.expectRevert(
+            kHYPEWithdrawalModule.kHYPEWithdrawalModule__unstakeToken0Reserves_MaxPendingRequestsReached.selector
+        );
+        _withdrawalModule.unstakeToken0Reserves(amountToken0);
+        vm.stopPrank();
+    }
+
+    function testUnstakeToken0Reserves_PrunesClearedRequestBeforeCapCheck() public {
+        uint256 amountToken0 = 1 ether;
+        uint256 amountToken1PerRequest = (amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS;
+
+        for (uint256 i; i < 5; i++) {
+            _unstakeToken0Reserves(amountToken0);
+        }
+
+        uint256 pendingBefore = _withdrawalModule.amountToken0PendingUnstaking();
+        stakingManager.cancelWithdrawal(address(_withdrawalModule), 0);
+
+        _token0.transfer(address(_withdrawalModule), amountToken0);
+
+        vm.prank(owner);
+        _withdrawalModule.unstakeToken0Reserves(amountToken0);
+
+        assertEq(stakingManager.nextWithdrawalId(address(_withdrawalModule)), 6);
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), pendingBefore + amountToken1PerRequest);
+    }
+
+    function testConfirmWithdrawal_WithExchangeRateIncrease_ClearsPendingUnstaking() public {
+        _unstakeToken0Reserves(5 ether);
+        uint256 pendingBefore = _withdrawalModule.amountToken0PendingUnstaking();
+        assertGt(pendingBefore, 0);
+
+        // Increase kHYPE exchange ratio while request is queued.
+        stakingAccountant.setTotalRewards(50 ether);
+
+        vm.deal(address(stakingManager), (5 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS);
+        vm.warp(block.timestamp + 7 days);
+
+        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
+        assertTrue(isConfirmed);
+
+        // Pending unstaking is settled using queued post-fee kHYPE shares.
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+
+        // No LP withdrawals to fulfill, so confirmed native token gets wrapped back to pool.
+        assertEq(address(_withdrawalModule).balance, 0);
+        assertEq(weth.balanceOf(address(_pool)), (5 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS);
+    }
+
+    function testConfirmWithdrawal_WithBufferUsed_DoesNotChangePendingUnstakingAccounting() public {
+        _unstakeToken0Reserves(5 ether);
+
+        IStakingManager.WithdrawalRequest memory request =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), 0);
+        uint256 bufferUsed = request.hypeAmount / 3;
+        stakingManager.setWithdrawalRequestBufferUsed(address(_withdrawalModule), 0, bufferUsed);
+
+        IStakingManager.WithdrawalRequest memory updatedRequest =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), 0);
+        assertEq(updatedRequest.bufferUsed, bufferUsed);
+        assertEq(updatedRequest.kHYPEAmount, request.kHYPEAmount);
+
+        vm.deal(address(stakingManager), updatedRequest.hypeAmount);
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+
+        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
+        assertTrue(isConfirmed);
+
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+        assertEq(address(_withdrawalModule).balance, 0);
+        assertEq(weth.balanceOf(address(_pool)), updatedRequest.hypeAmount);
+        assertEq(stakingManager.withdrawalRequests(address(_withdrawalModule), 0).bufferUsed, 0);
     }
 
     function testSettlePendingWithdrawalsWithPoolReserves() public {
@@ -681,7 +1143,7 @@ contract kHYPEWithdrawalModuleTest is Test {
         vm.deal(address(_withdrawalModule), 1 ether);
 
         assertEq(address(_withdrawalModule).balance, 1 ether);
-        assertEq(
+        assertGe(
             _withdrawalModule.amountToken1PendingLPWithdrawal(),
             (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS - 1 ether
         );
@@ -689,10 +1151,11 @@ contract kHYPEWithdrawalModuleTest is Test {
             _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(),
             (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS
         );
-        // 1e18 of native token has reduced the amount of token0 pending unstaking proportionally
+        // Extra native token balance does not reduce token0 pending unstaking directly.
+        // Pending unstaking is decremented only on successful queued withdrawal confirmation.
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
-            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS - 1 ether
+            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS
         );
         assertEq(
             _withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(),
@@ -706,7 +1169,7 @@ contract kHYPEWithdrawalModuleTest is Test {
         assertEq(address(_withdrawalModule).balance, (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS);
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
-            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS - 1 ether
+            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS
         );
         // update has been called at least once
         assertEq(
@@ -733,6 +1196,36 @@ contract kHYPEWithdrawalModuleTest is Test {
         assertEq(recipient.balance, (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS);
 
         vm.stopPrank();
+    }
+
+    function testSettlePendingWithdrawalsWithPoolReserves_ConfirmsMaturedQueueBeforeUsingPoolReserves() public {
+        _unstakeToken0Reserves(3 ether);
+
+        address recipient = makeAddr("MOCK_RECIPIENT");
+        _burnToken0AfterWithdraw(3 ether, recipient);
+
+        uint256 pendingLPBefore = _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
+        assertGt(pendingLPBefore, 0);
+
+        IStakingManager.WithdrawalRequest memory request =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), 0);
+        vm.deal(address(stakingManager), request.hypeAmount);
+        vm.warp(block.timestamp + stakingManager.withdrawalDelay());
+
+        uint256 poolBalanceBefore = weth.balanceOf(_pool);
+
+        vm.prank(owner);
+        _withdrawalModule.settlePendingWithdrawalsWithPoolReserves(pendingLPBefore);
+
+        // Matured unstake is confirmed before settling with pool reserves.
+        assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
+        assertEq(_withdrawalModule.amountToken0PendingUnstakingBeforeUpdate(), 0);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), 0);
+        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), 0);
+        assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), pendingLPBefore);
+
+        // Since pending LP was already funded by confirmed unstake, the supplied token1 is fully returned to pool.
+        assertEq(weth.balanceOf(_pool) - poolBalanceBefore, pendingLPBefore);
     }
 
     function testUpdate() public {
@@ -762,13 +1255,13 @@ contract kHYPEWithdrawalModuleTest is Test {
         uint256 snapshot = vm.snapshotState();
         uint256 snapshot2 = vm.snapshotState();
 
-        // Scenario 1: update with partial unstaking fulfilled
+        // Scenario 1: update with extra native token but no confirmation
         vm.deal(address(_withdrawalModule), 2 ether);
         _withdrawalModule.update();
 
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
-            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS - _withdrawalModule.convertToToken0(2 ether)
+            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS
         );
         // All native token got wrapped and transferred into pool,
         // since there were no LP withdrawals to fulfill
@@ -781,11 +1274,12 @@ contract kHYPEWithdrawalModuleTest is Test {
 
         address recipient = makeAddr("MOCK_RECIPIENT");
         _withdrawalModule.burnToken0AfterWithdraw(1 ether, recipient);
-        uint256 amountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawal();
+        uint256 amountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
         assertEq(
             amountToken1PendingLPWithdrawal,
             _withdrawalModule.convertToToken1((1 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS)
         );
+        assertGe(_withdrawalModule.amountToken1PendingLPWithdrawal(), amountToken1PendingLPWithdrawal);
 
         vm.deal(address(_withdrawalModule), 0.5 ether);
         assertEq(
@@ -800,17 +1294,16 @@ contract kHYPEWithdrawalModuleTest is Test {
 
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
-            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS - _withdrawalModule.convertToToken0(0.5 ether)
+            (3 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS
         );
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
             _withdrawalModule.amountToken0PendingUnstakingBeforeUpdate()
         );
         assertEq(_withdrawalModule.amountToken1ClaimableLPWithdrawal(), 0.5 ether);
-        assertEq(_withdrawalModule.amountToken1PendingLPWithdrawal(), amountToken1PendingLPWithdrawal - 0.5 ether);
+        assertGe(_withdrawalModule.amountToken1PendingLPWithdrawal(), amountToken1PendingLPWithdrawal - 0.5 ether);
         assertEq(
-            _withdrawalModule.amountToken1PendingLPWithdrawal(),
-            _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate()
+            _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(), amountToken1PendingLPWithdrawal - 0.5 ether
         );
         assertEq(address(_withdrawalModule).balance, 0.5 ether);
         // Not enough native token left to re-deposit into pool
@@ -829,18 +1322,19 @@ contract kHYPEWithdrawalModuleTest is Test {
 
         _withdrawalModule.burnToken0AfterWithdraw(1 ether, recipient);
 
-        amountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawal();
+        amountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
         assertEq(
             amountToken1PendingLPWithdrawal,
             _withdrawalModule.convertToToken1((1 ether * (BIPS - stakingManager.unstakeFeeRate())) / BIPS)
         );
+        assertGe(_withdrawalModule.amountToken1PendingLPWithdrawal(), amountToken1PendingLPWithdrawal);
 
-        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
-        assertFalse(isConfirmed);
+        vm.expectRevert(bytes("No valid withdrawal request"));
+        _withdrawalModule.confirmWithdrawal(0);
 
         vm.warp(block.timestamp + 7 days);
 
-        isConfirmed = _withdrawalModule.confirmWithdrawal(0);
+        bool isConfirmed = _withdrawalModule.confirmWithdrawal(0);
         assertTrue(isConfirmed);
         assertEq(_withdrawalModule.amountToken0PendingUnstaking(), 0);
 
@@ -1092,6 +1586,43 @@ contract kHYPEWithdrawalModuleTest is Test {
         vm.stopPrank();
     }
 
+    function testLendingModuleProposal_OldLendingShortWithdrawDoesNotRevert() public {
+        assertEq(address(_withdrawalModule.lendingModule()), address(lendingModule));
+
+        vm.startPrank(owner);
+
+        uint256 amount = 2 ether;
+        _withdrawalModule.supplyToken1ToLendingPool(amount);
+        assertEq(lendingModule.assetBalance(), amount);
+
+        // Simulates compromised lending-pool withdrawals returning less than requested.
+        lendingPool.setIsCompromised(true);
+
+        address lendingModuleMock = address(
+            new AaveLendingModule(
+                address(lendingPool),
+                lendingPool.lendingPoolYieldToken(),
+                address(weth),
+                address(_withdrawalModule),
+                address(0x123),
+                2
+            )
+        );
+        _withdrawalModule.proposeLendingModule(lendingModuleMock, 3 days);
+        vm.warp(block.timestamp + 3 days);
+
+        uint256 preBalancePool = weth.balanceOf(address(_pool));
+        _withdrawalModule.setProposedLendingModule();
+        uint256 postBalancePool = weth.balanceOf(address(_pool));
+
+        // Module migration succeeds even when the old lending module sends less than expected.
+        assertEq(postBalancePool - preBalancePool, 0);
+        assertEq(lendingModule.assetBalance(), 0);
+        assertEq(address(_withdrawalModule.lendingModule()), lendingModuleMock);
+
+        vm.stopPrank();
+    }
+
     function _burnToken0AfterWithdraw(uint256 amountToken0, address recipient) private {
         vm.prank(_pool);
 
@@ -1099,8 +1630,9 @@ contract kHYPEWithdrawalModuleTest is Test {
         _withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
 
         uint256 preAmountToken0PendingUnstaking = _withdrawalModule.amountToken0PendingUnstaking();
-        uint256 preAmountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawal();
+        uint256 preAmountToken1PendingLPWithdrawal = _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate();
         uint256 preAmountCumulative = _withdrawalModule.cumulativeAmountToken1LPWithdrawal();
+        uint256 amountToken1Request = _expectedAmountToken1AfterWithdrawFee(amountToken0);
 
         _withdrawalModule.burnToken0AfterWithdraw(amountToken0, recipient);
         // No token0 has been unstaked
@@ -1110,11 +1642,10 @@ contract kHYPEWithdrawalModuleTest is Test {
             _withdrawalModule.amountToken0PendingUnstakingBeforeUpdate()
         );
         assertEq(
-            _withdrawalModule.amountToken1PendingLPWithdrawal(),
-            _withdrawalModule.convertToToken1((amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS)
-                + preAmountToken1PendingLPWithdrawal
+            _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate(),
+            amountToken1Request + preAmountToken1PendingLPWithdrawal
         );
-        assertEq(
+        assertGe(
             _withdrawalModule.amountToken1PendingLPWithdrawal(),
             _withdrawalModule.amountToken1PendingLPWithdrawalBeforeUpdate()
         );
@@ -1123,12 +1654,29 @@ contract kHYPEWithdrawalModuleTest is Test {
         {
             LPWithdrawalRequest memory request = _withdrawalModule.getLPWithdrawals(preId);
             assertEq(request.recipient, recipient);
-            assertEq(
-                request.amountToken1,
-                _withdrawalModule.convertToToken1((amountToken0 * (BIPS - stakingManager.unstakeFeeRate())) / BIPS)
-            );
+            assertEq(request.amountToken1, amountToken1Request);
             assertEq(request.cumulativeAmountToken1LPWithdrawalCheckpoint, preAmountCumulative);
         }
+    }
+
+    function _expectedAmountToken1AfterWithdrawFee(uint256 amountToken0) private view returns (uint256) {
+        uint256 unstakeFeeBips = stakingManager.unstakeFeeRate();
+        if (unstakeFeeBips > BIPS - 1) {
+            unstakeFeeBips = BIPS - 1;
+        }
+
+        uint256 feeBips = Math.max(unstakeFeeBips, _withdrawalModule.burnFeeBips());
+        uint256 feeToken0 = Math.mulDiv(amountToken0, feeBips, BIPS, Math.Rounding.Ceil);
+
+        return _withdrawalModule.convertToToken1(amountToken0 - feeToken0);
+    }
+
+    function _setBurnFeeBips(uint256 burnFee) private {
+        vm.startPrank(owner);
+        _withdrawalModule.proposeBurnFeeBips(burnFee, 3 days);
+        vm.warp(block.timestamp + 3 days);
+        _withdrawalModule.setProposedBurnFeeBips();
+        vm.stopPrank();
     }
 
     function _unstakeToken0Reserves(uint256 amount) private {
@@ -1143,6 +1691,11 @@ contract kHYPEWithdrawalModuleTest is Test {
         vm.startPrank(owner);
 
         _withdrawalModule.unstakeToken0Reserves(amount);
+
+        uint256 requestId = stakingManager.nextWithdrawalId(address(_withdrawalModule)) - 1;
+        IStakingManager.WithdrawalRequest memory request =
+            stakingManager.withdrawalRequests(address(_withdrawalModule), requestId);
+        assertEq(request.bufferUsed, 0);
 
         assertEq(
             _withdrawalModule.amountToken0PendingUnstaking(),
