@@ -127,10 +127,11 @@ contract kHYPEWithdrawalModuleManager is Ownable {
      * @param _amountToken1 Amount of token1 reserves to withdraw from lending pool.
      */
     function withdrawToken1FromLendingPool(address _withdrawalModule, uint256 _amountToken1) external onlyKeeper {
-        IWithdrawalModule(_withdrawalModule).withdrawToken1FromLendingPool(
-            _amountToken1,
-            address(0) // _recipient is unused, since it must the STEX pool
-        );
+        IWithdrawalModule(_withdrawalModule)
+            .withdrawToken1FromLendingPool(
+                _amountToken1,
+                address(0) // _recipient is unused, since it must the STEX pool
+            );
     }
 
     /**
@@ -164,9 +165,8 @@ contract kHYPEWithdrawalModuleManager is Ownable {
         address _rebalanceModule,
         bytes calldata _payload
     ) external onlyKeeper {
-        kHYPEWithdrawalModule(payable(_withdrawalModule)).rebalanceToken0Reserves(
-            _amountToken0, _recipient, _rebalanceModule, _payload
-        );
+        kHYPEWithdrawalModule(payable(_withdrawalModule))
+            .rebalanceToken0Reserves(_amountToken0, _recipient, _rebalanceModule, _payload);
     }
 
     /**

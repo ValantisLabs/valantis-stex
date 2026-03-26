@@ -45,9 +45,10 @@ contract MockERC4626LendingPool {
     }
 
     function maxWithdraw(address account) external view returns (uint256) {
-        return _totalSupply == 0
-            ? 0
-            : (_shares[account] * ERC20Mock(underlyingAsset).balanceOf(address(this))) / _totalSupply;
+        return
+            _totalSupply == 0
+                ? 0
+                : (_shares[account] * ERC20Mock(underlyingAsset).balanceOf(address(this))) / _totalSupply;
     }
 
     function setIsCompromised(bool value) public {
@@ -88,7 +89,14 @@ contract MockERC4626LendingPool {
         _totalAssets += amountDeposited;
     }
 
-    function withdraw(uint256 assets, address receiver, address /*owner*/ ) external returns (uint256 shares) {
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address /*owner*/
+    )
+        external
+        returns (uint256 shares)
+    {
         require(receiver != address(0), "receiver cannot be zero");
 
         if (assets == 0) {

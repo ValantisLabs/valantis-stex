@@ -64,7 +64,11 @@ contract kHYPEWithdrawalModuleKeeperTest is Test {
         uint256,
         /*amountToken1Min*/
         bytes calldata /*_data*/
-    ) external pure returns (bytes4) {
+    )
+        external
+        pure
+        returns (bytes4)
+    {
         return IRebalanceModule.rebalance.selector;
     }
 

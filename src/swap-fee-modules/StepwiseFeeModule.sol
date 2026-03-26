@@ -88,7 +88,12 @@ contract StepwiseFeeModule is IStepwiseFeeModule, Ownable {
         uint256 _amountIn,
         address, /*_user*/
         bytes memory /*_swapFeeModuleContext*/
-    ) external view override returns (SwapFeeModuleData memory swapFeeModuleData) {
+    )
+        external
+        view
+        override
+        returns (SwapFeeModuleData memory swapFeeModuleData)
+    {
         ISovereignPool poolInterface = ISovereignPool(pool);
         // Fee is only applied on token0 -> token1 swaps
         if (_tokenIn == poolInterface.token0()) {

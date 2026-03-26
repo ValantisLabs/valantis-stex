@@ -321,8 +321,7 @@ contract stHYPEWithdrawalModuleTest is Test {
         lendingPool.setIsCompromised(true);
 
         vm.expectRevert(
-            stHYPEWithdrawalModule
-                .stHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn
+            stHYPEWithdrawalModule.stHYPEWithdrawalModule__withdrawToken1FromLendingPool_InsufficientAmountWithdrawn
                 .selector
         );
         _withdrawalModule.withdrawToken1FromLendingPool(amountToken1, recipient);

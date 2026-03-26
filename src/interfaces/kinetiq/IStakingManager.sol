@@ -8,6 +8,7 @@ interface IStakingManager {
         uint256 hypeAmount; // Amount in HYPE to withdraw
         uint256 kHYPEAmount; // Amount in kHYPE to burn (excluding fee)
         uint256 kHYPEFee; // Fee amount in kHYPE tokens
+        uint256 bufferUsed; // Amount fulfilled from hypeBuffer
         uint256 timestamp; // Request timestamp
     }
 

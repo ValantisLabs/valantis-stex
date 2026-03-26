@@ -39,7 +39,15 @@ contract MockLendingPool is IPool {
         isExcessTransfer = value;
     }
 
-    function supply(address asset, uint256 amount, address onBehalfOf, uint16 /*referralCode*/ ) external override {
+    function supply(
+        address asset,
+        uint256 amount,
+        address onBehalfOf,
+        uint16 /*referralCode*/
+    )
+        external
+        override
+    {
         require(asset == underlyingAsset, "unexpected underlying asset");
         require(amount != 0, "amount cannot be zero");
         require(onBehalfOf != address(0), "onBehalfOf cannot be zero");

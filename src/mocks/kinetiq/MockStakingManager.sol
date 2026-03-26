@@ -83,6 +83,7 @@ contract MockStakingManager is IStakingManager {
             hypeAmount: hypeAmount,
             kHYPEAmount: postFeeKHYPE,
             kHYPEFee: kHYPEFee,
+            bufferUsed: 0,
             timestamp: block.timestamp
         });
 
@@ -102,6 +103,8 @@ contract MockStakingManager is IStakingManager {
         require(success, "Transfer failed");
     }
 
+    /// @dev In production Kinetiq contracts, cancellation is gated under governance.
+    ///      This mock is intentionally unprotected for test flexibility.
     function cancelWithdrawal(address user, uint256 withdrawalId) external {
         WithdrawalRequest storage request = _withdrawalRequests[user][withdrawalId];
         require(request.hypeAmount > 0, "No such withdrawal request");
@@ -122,6 +125,14 @@ contract MockStakingManager is IStakingManager {
 
         // Track cancelled amount for future redelegation
         _cancelledWithdrawalAmount += hypeAmount;
+    }
+
+    function setWithdrawalRequestBufferUsed(address user, uint256 withdrawalId, uint256 bufferUsed) external {
+        WithdrawalRequest storage request = _withdrawalRequests[user][withdrawalId];
+        require(request.hypeAmount > 0, "No such withdrawal request");
+        require(bufferUsed <= request.hypeAmount, "Buffer exceeds withdrawal");
+
+        request.bufferUsed = bufferUsed;
     }
 
     function _processConfirmation(address user, uint256 withdrawalId) internal returns (uint256) {

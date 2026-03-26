@@ -155,8 +155,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
     ) Ownable(_owner) ERC20(_name, _symbol) {
         if (
             _token0 == address(0) || _token1 == address(0) || _swapFeeModule == address(0)
-                || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0) || _poolFeeRecipient2 == address(0)
-                || _owner == address(0) || withdrawalModule_ == address(0)
+                || _protocolFactory == address(0) || _poolFeeRecipient1 == address(0)
+                || _poolFeeRecipient2 == address(0) || _owner == address(0) || withdrawalModule_ == address(0)
         ) revert STEXAMM__ZeroAddress();
 
         SovereignPoolConstructorArgs memory args = SovereignPoolConstructorArgs(
@@ -248,9 +248,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         }
 
         address swapFeeModule = ISovereignPool(pool).swapFeeModule();
-        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule).getSwapFeeInBips(
-            _tokenIn, address(0), _isInstantWithdraw ? 0 : _amountIn, address(0), new bytes(0)
-        );
+        SwapFeeModuleData memory swapFeeData = ISwapFeeModuleMinimalView(swapFeeModule)
+            .getSwapFeeInBips(_tokenIn, address(0), _isInstantWithdraw ? 0 : _amountIn, address(0), new bytes(0));
 
         uint256 amountInWithoutFee = Math.mulDiv(_amountIn, BIPS, BIPS + swapFeeData.feeInBips);
         bool isZeroToOne = _tokenIn == token0;
@@ -535,7 +534,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         /*_amount0*/
         uint256 _amount1,
         bytes memory _data
-    ) external override onlyPool {
+    )
+        external
+        override
+        onlyPool
+    {
         address user = abi.decode(_data, (address));
 
         // Only token1 deposits are allowed
@@ -656,9 +659,8 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
             (, uint256 reserve1) = ISovereignPool(pool).getReserves();
             if (cache.amount1Remaining <= reserve1) {
                 // If pool has enough token1 liquidity
-                ISovereignPool(pool).withdrawLiquidity(
-                    0, cache.amount1Remaining, msg.sender, address(this), new bytes(0)
-                );
+                ISovereignPool(pool)
+                    .withdrawLiquidity(0, cache.amount1Remaining, msg.sender, address(this), new bytes(0));
             } else {
                 // If pool does not have enough token1 liquidity,
                 // we withdraw full reserves from pool,
@@ -692,7 +694,13 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         ALMLiquidityQuoteInput memory _almLiquidityQuoteInput,
         bytes calldata, /*_externalContext*/
         bytes calldata /*_verifierData*/
-    ) external view override whenNotPaused returns (ALMLiquidityQuote memory quote) {
+    )
+        external
+        view
+        override
+        whenNotPaused
+        returns (ALMLiquidityQuote memory quote)
+    {
         // Prevents read-only reentrancy via `SovereignPool::swap`,
         // while keeping `getLiquidityQuote` as read-only
         if (_reentrancyGuardEntered()) {
@@ -720,7 +728,11 @@ contract STEXAMM is ISTEXAMM, Ownable, ERC20, ReentrancyGuardTransient, Pausable
         /*_isZeroToOne*/
         uint256, /*_amountIn*/
         uint256 /*_amountOut*/
-    ) external pure override {
+    )
+        external
+        pure
+        override
+    {
         revert STEXAMM__onSwapCallback_NotImplemented();
     }
 
